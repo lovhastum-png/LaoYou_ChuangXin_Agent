@@ -1,0 +1,32 @@
+[
+  {
+    "name": "laoyou-windows-x64.zip",
+    "status": 200,
+    "content_length": "54604632"
+  },
+  {
+    "name": "laoyou-android.apk",
+    "status": 200,
+    "content_length": "11155274"
+  },
+  {
+    "name": "laoyou-web-source.zip",
+    "status": 200,
+    "content_length": "71033"
+  },
+  {
+    "name": "laoyou-backend-source.zip",
+    "status": 200,
+    "content_length": "39237"
+  },
+  {
+    "name": "laoyou-android-source.zip",
+    "status": 200,
+    "content_length": "78334"
+  },
+  {
+    "name": "SHA256SUMS.txt",
+    "status": 200,
+    "content_length": "451"
+  }
+]
