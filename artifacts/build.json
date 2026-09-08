@@ -1,0 +1,10 @@
+{
+  "file": "laoyou-debug.apk",
+  "sha256": "D227DF9500025D5802A4E7FAE1D18C20EBDFC74BF2431C611803BE5F6093FBF7",
+  "build": "debug",
+  "minAndroidApi": 26,
+  "targetAndroidApi": 36,
+  "backend": "FastAPI / PostgreSQL",
+  "web": "Vue 3 / TypeScript",
+  "mobile": "Kotlin / Jetpack Compose"
+}

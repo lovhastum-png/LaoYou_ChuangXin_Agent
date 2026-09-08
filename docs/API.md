@@ -1,0 +1,83 @@
+# 首版接口契约（主代理维护）
+
+HTTP base `/api`，JSON UTF-8；ID统一字符串UUID。时间统一ISO8601 UTC带时区；本地显示Asia/Shanghai。错误 `{detail: string}`，401未登录，403无权限，404不可见资源，409状态冲突，422参数错误。分页非首版必要，不加复杂通用层；列表最大200。
+
+身份：`elder` 老人屏、`child` 子女、`community` 社区、`admin` 演示管理。Bearer token，登录后前端保存会话。后端必须校验家庭关系/社区分配，不能只隐藏按钮。演示账号 `elder` / `child` / `community` / `admin`，初始密码均 `Laoyou123!`（仅本地演示），提供退出。
+
+## 身份与家庭
+
+- `POST /auth/login {username,password}` -> `{token,user:{id,username,display_name,role}}`
+- `POST /auth/logout` -> `{ok:true}`；`GET /auth/me` -> user。
+- `GET /elders` -> Elder[]，只返回获授权老人。
+- Elder: `{id,name,city,camera_enabled,voice_enabled,dialect,routine:{wake_time,lunch_time,dinner_time,sleep_time},rules:{night_start,night_end,immobility_minutes,sleep_immobility_minutes,away_minutes,heart_rate_low,heart_rate_high,systolic_high,diastolic_high}}`。时间HH:mm，阈值数值。
+- `PATCH /elders/{id}/settings {camera_enabled?,voice_enabled?,dialect?,city?,routine?,rules?,confirm_camera_off?}` -> Elder。关摄像头必须 `confirm_camera_off:true`；老人/子女/admin可更改，社区只读。
+- `GET /elders/{id}/dashboard` -> `{elder,weather,reminders,broadcasts,latest_observation,active_event_count}`
+- weather: `{city,temperature,description,advice,observed_at,source}`；source `live` 或 `simulated`。请求失败明确降级，不返回伪实时。
+
+## 提醒与播报
+
+- `GET /elders/{id}/reminders` -> Reminder[]
+- `POST /elders/{id}/reminders {title,medicine,dose,time,enabled?}` -> Reminder
+- `PATCH /reminders/{id} {title?,medicine?,dose?,time?,enabled?}` -> Reminder；`DELETE /reminders/{id}` -> `{ok:true}`
+- Reminder `{id,elder_id,title,medicine,dose,time,enabled,created_at}`，每天HH:mm，用户自行录入名称剂量，不提供药物推荐。
+- `GET /elders/{id}/broadcasts` -> Broadcast[]，最近今日，待播在前。
+- Broadcast `{id,elder_id,reminder_id,kind,text,scheduled_at,played_at,source}`，kind `medication|weather|health`。非用药播报reminder_id为null；用药已播状态按reminder_id精确关联，不能用时间或标题猜测。
+- `POST /broadcasts/{id}/played` -> Broadcast，幂等。老人端用户启用声音后轮询新条目，TTS成功结束后回传played；播放失败不标成功。
+- 后端调度每5秒检查，(老人,播报kind,计划时刻,提醒ID)唯一，重启不重复生成。天气默认起床后，健康早/午/晚按routine，药物时间严格不受学习影响。
+- 调度检查点持久化；服务恢复后补建当日错过的计划。晚到的用药播报明确给出原定时间并提示核对、避免重复服用，不指导补服。暂停/删除/改时会取消尚未播出的旧提醒，已经播出的记录保留。
+
+## 观测与异常
+
+- `GET /elders/{id}/observations` -> Observation[] 最近100。
+- `POST /elders/{id}/observations {kind,value?,duration_minutes?,sleeping?,occurred_at?,location?,source?,idempotency_key?}` -> `{observation,events:Event[]}`。仅admin/child用于演示注入。kind `fall|wandering|immobility|away|heart_rate|blood_pressure|activity|wake|lunch|dinner|sleep|return_home`。value心率数值；血压 `{systolic,diastolic}`；location `{latitude,longitude,label?}`。source默认为 `simulated`，未接设备不接受伪造 `live`。
+- 摄像头关闭时不接受来自camera的监控推断（UI也停止采集）；穿戴fall观测使用source `simulated_wearable` 可继续。明确区分来源。
+- Observation `{id,elder_id,kind,value,duration_minutes,sleeping,occurred_at,location,source}`。
+- 夜间徘徊按本地night_start/end；静止按sleeping阈值；fall立即；away超阈值；心率/血压按演示规则触发；wake/lunch/dinner/sleep观察对最近7次时刻取中位数，生成routine，不改提醒。
+- `GET /events?elder_id=&status=` -> Event[]，可省略参数得到当前账户可见事件。
+- `GET /events/{id}` -> EventDetail。
+- Event `{id,elder_id,elder_name,kind,title,severity,status,source,description,created_at,updated_at}`，severity `warning|critical`；status `alerted|acknowledged|handling|resolved|false_positive`。
+- EventDetail extends Event `{timeline:Timeline[],notifications:Notification[],escort:Escort|null}`。
+- Timeline `{id,node,at,actor,detail}`，保留原始历史。
+- `POST /events/{id}/actions {action,note?}` -> EventDetail。
+  - action `acknowledge`：alerted->acknowledged；`start`：acknowledged->handling；`resolve`：handling->resolved（需note）；`correct`：任意非false_positive->false_positive，仅child/admin且必须原因；`community_unavailable`：仅community/admin且仅心率/血压未结束事件，必须note，追加节点并创建唯一Escort，不跳过处理状态。
+  - 重复同一成功动作幂等；非法跳跃409。elder不可处置或修正。
+- Notification `{id,event_id,target,status,created_at,sent_at,acknowledged_at,attempts,last_error,simulated}`，target `child|community|emergency`；status `pending|sent|failed|acknowledged`。
+- 所有异常子女；fall/immobility/away->community；heart_rate/blood_pressure->community+emergency。普通徘徊不默认社区。
+- `POST /notifications/{id}/ack` -> Notification；只允许对应target角色/admin。读取列表不算确认。
+- `POST /notifications/{id}/retry` -> Notification；仅admin，失败才重试，必须记录attempt和时间。
+- `GET /notifications` -> Notification[]，只返回对应角色且获授权。
+- `PATCH /demo/notifications {fail_targets:["community"]}` -> `{fail_targets:[]}`（响应为实际配置），仅admin；模拟故障只影响后续发送/重试，默认空。
+
+## 陪诊
+
+- `GET /escorts` -> Escort[]；`POST /escorts/{id}/actions {action,note?}` -> Escort。action `accept|complete`；admin/community可执行；完成需note。
+- Escort `{id,event_id,elder_id,platform,status,requested_at,accepted_at,completed_at,note,simulated}`；platform放心医，status `requested|accepted|completed`；过程追加原事件timeline。
+
+## 智能体与语音
+
+- `POST /elders/{id}/assistant {text,dialect?,confirm_token?}` -> `{reply,mode,action,proposal,confirm_token}`，mode `local_rules` 或实际配置的模型模式；未配置模型清楚标识本地指令助手。
+- 指令助手仅elder/child/admin可访问，社区不能通过助手绕过设置和提醒的写权限。
+- action `none|reminder_proposal|reminder_created|call|camera_confirm|camera_updated|weather|health`；proposal可以是提醒字段或 `{camera_enabled:false}`；确认token为后端生成一次性短期会话令牌，第二次请求带token且文本“确认”才执行。不能让客户端提供任意确认内容执行。
+- 支持你好通通、天气、健康、提醒查询、“每天晚上八点提醒我吃降压药”、视频通话、关闭摄像头；不懂时给出支持的指令，不假装开放域智能。
+- `GET /capabilities` -> `{assistant_mode,speech:{provider,configured,dialects:[{id,label,available,note}]},video:{mode},integrations:{camera,wearable,emergency,escort}}`。
+- 方言候选 `zh-CN`普通话、`yue-HK`粤语、`sichuan`四川话、`northeast`东北话。浏览器系统语音由设备决定，不将普通话识别伪装成方言。可配置讯飞ASR适配；未配置四川/东北标不可用并提示文字入口。
+- `POST /elders/{id}/speech?dialect=...` 接收 `Content-Type: audio/L16` 原始16kHz、16位little-endian单声道PCM，0.1~30秒、最大960000字节，返回 `{text,dialect,provider:"xfyun"}`。鉴权且限制家庭权限；缺配置503，外部服务失败502，音频/方言参数无效422。录音不落盘。环境变量 `XFYUN_APP_ID` / `XFYUN_API_KEY` / `XFYUN_API_SECRET`。方言账号需开通官方方言免切服务，未实测不得宣称已通过识别验收。
+
+## 视频通话和监控（Web组和后端组对齐）
+
+- `POST /elders/{id}/calls` -> Call；elder/child可发起，重复活动呼叫返回原呼叫。
+- `GET /elders/{id}/calls` -> Call[] 最近活动与历史。
+- `GET /calls/{id}` -> Call，同样校验可访问家庭和通话角色；供独立通话页面确定发起者。
+- Call `{id,elder_id,created_by,status,created_at,answered_at,ended_at}`；status `ringing|active|ended|declined`。
+- `POST /calls/{id}/actions {action}` action `answer|end|decline` -> Call，必须参与者有权限。
+- `WS /ws/calls/{id}?token=...` 转发JSON `{type:"offer|answer|candidate",payload:object}`，不把用户token转发给对方；需要鉴权和家庭校验。前端WebRTC双向音视频，显示权限/连通错误，挂断释放track。
+- 第二端进入房间后服务端向双方发 `{type:"peer_ready",payload:{}}`。caller（created_by等于当前用户id）收到该消息后发offer，避免接听者尚未进入时丢失offer。ICE需在remoteDescription完成后再添加。房间限双端。
+- Web `/call/{id}?token=...` 为Android内嵌通话入口；取到token后立即从地址移除，不记录到日志。APP主体必须原生Compose，通话页面可以受控WebView调用现成WebRTC。
+- 安卓附加 `embedded=1`，返回由原生APP处理并同步挂断，网页不显示进入完整WebUI的返回按钮。登录运行期间，两端首页每5秒检查来电，用户接听后才进入媒体页面。
+- 监控：老人WebUI启用摄像头时通过getUserMedia获取真实预览，可发送压缩单帧供授权子女/社区查看；`POST /elders/{id}/snapshot` image/jpeg body，最大512KB，仅elder/admin；`GET /elders/{id}/snapshot` -> image/jpeg（无画面404、摄像头关闭409），鉴权；关闭时清除存储帧且Web停止track。UI显示帧时间，不能伪装实时视频或视觉模型识别。
+
+## 运行
+
+- `GET /health` -> `{status:"ok",database:"ok"}`（无鉴权，数据库不通503）。
+- 后端8000；开发Web5173代理/api与/ws；交付Web由后端静态托管同源，安卓默认可编辑服务地址，模拟器可用10.0.2.2:8000或ADB reverse。
+- 真实互联网视频需HTTPS与TURN，首版同机localhost/局域网验证需要明确浏览器媒体安全上下文限制，不声称公网保障。

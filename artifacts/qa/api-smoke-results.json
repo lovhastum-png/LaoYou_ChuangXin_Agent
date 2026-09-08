@@ -1,0 +1,55 @@
+{
+  "at": "2026-09-08T06:45:24.520755+00:00",
+  "base": "http://localhost:8001",
+  "passed": true,
+  "checks": [
+    {
+      "check": "四种角色登录及家庭列表",
+      "status": "passed"
+    },
+    {
+      "check": "总控数据与天气来源",
+      "status": "passed"
+    },
+    {
+      "check": "老人不可伪造观测、社区不可修改老人设置",
+      "status": "passed"
+    },
+    {
+      "check": "子女创建提醒、老人端读取和修改",
+      "status": "passed"
+    },
+    {
+      "check": "自然语言半点提醒、服务端确认后才写入",
+      "status": "passed"
+    },
+    {
+      "check": "摄像头关闭二次确认与关闭后的访问阻断",
+      "status": "passed"
+    },
+    {
+      "check": "跌倒幂等、通知目标、权限、不可跳步及处置时间线",
+      "status": "passed"
+    },
+    {
+      "check": "未归误报由子女修正并保留原因",
+      "status": "passed"
+    },
+    {
+      "check": "医疗异常三方模拟通知、失败重试与接收确认",
+      "status": "passed"
+    },
+    {
+      "check": "社区无法协助转放心医及陪诊节点",
+      "status": "passed"
+    },
+    {
+      "check": "视频呼叫权限、双向WebSocket信令与挂断记录",
+      "status": "passed"
+    },
+    {
+      "check": "退出撤销会话",
+      "status": "passed"
+    }
+  ]
+}
