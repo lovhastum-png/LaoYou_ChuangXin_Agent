@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>老友 Windows 便携版使用说明</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, "Microsoft YaHei", sans-serif; }
+    body { max-width: 860px; margin: 0 auto; padding: 32px 22px 56px; color: #26313d; line-height: 1.7; background: #f6f8fa; }
+    main { padding: 30px 34px; border-radius: 18px; background: white; box-shadow: 0 8px 30px #1e293b14; }
+    h1 { margin-top: 0; color: #126e82; }
+    h2 { margin-top: 28px; color: #1b5667; font-size: 1.15rem; }
+    code { padding: 2px 6px; border-radius: 5px; background: #eef3f5; }
+    .accounts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+    .account { padding: 10px 14px; border: 1px solid #d9e3e7; border-radius: 10px; background: #fbfdfd; }
+    .tip { padding: 12px 16px; border-left: 4px solid #efa851; background: #fff8ec; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>老友 Windows 便携版</h1>
+  <p>解压后双击 <code>启动老友.cmd</code>。浏览器会打开老友总控页面。程序不安装 Windows 服务，也不会自动把端口开放到互联网。</p>
+  <h2>第一次启动</h2>
+  <p>首次启动会在 <code>data/</code> 初始化本包专用数据库，可能需要几十秒。演示密码统一为 <code>Laoyou123!</code>：</p>
+  <div class="accounts">
+    <div class="account"><b>elder</b><br>老人屏</div>
+    <div class="account"><b>child</b><br>子女</div>
+    <div class="account"><b>community</b><br>社区</div>
+    <div class="account"><b>admin</b><br>演示管理</div>
+  </div>
+  <h2>常用入口</h2>
+  <p><code>停止老友.cmd</code> 会停止本包启动的 Web 和数据库并保留数据；<code>查看状态.cmd</code> 查看运行情况；<code>手机连接说明.cmd</code> 显示局域网地址并生成 TXT；<code>诊断老友.cmd</code> 查看日志。</p>
+  <h2>手机访问</h2>
+  <p>从<a href="https://github.com/falling-feather/LaoYou_ChuangXin_Agent/releases/latest">发布页</a>下载并安装<code>laoyou-android.apk</code>。电脑和手机连接同一个Wi-Fi后，运行手机连接说明，把列出的<code>http://局域网地址:18080</code>填入APP“服务地址”。防火墙提示允许“专用网络”。</p>
+  <h2>配置与更新</h2>
+  <p>默认 Web 端口是 <code>18080</code>，数据库端口是 <code>55433</code>。停止程序后编辑 <code>config/运行配置.json</code> 修改端口。更新时先停止旧包并确认 Web、数据库都已停止，在新包第一次启动前把旧包的 <code>data/</code> 和 <code>config/</code> 复制过去；新包若已启动过，请使用全新的解压目录迁移。不要复制 <code>state/</code>，也不要在数据库运行时复制 data。</p>
+  <div class="tip">启动失败请运行“诊断老友.cmd”，查看 <code>logs/backend.stderr.log</code> 和 <code>logs/postgres.log</code>。不要删除或外传 <code>data/instance.json</code>。</div>
+  <h2>系统要求</h2>
+  <p>Windows 10/11 x64。包内已附带所需的Microsoft Visual C++运行库，无需安装开发工具或获取管理员权限。若提示缺少MSVCP140或VCRUNTIME140，请完整解压并检查安全软件是否隔离了文件。</p>
+  <h2>许可</h2>
+  <p>源码采用MIT协议；第三方许可和依赖版本清单位于<code>licenses/</code>。设备观测及机构通知为模拟接入，业务记录真实保存。</p>
+  <p>更多操作、分端源码和维护说明见<a href="https://github.com/falling-feather/LaoYou_ChuangXin_Agent">项目仓库</a>。</p>
+</main>
+</body>
+</html>

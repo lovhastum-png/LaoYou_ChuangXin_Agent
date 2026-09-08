@@ -1,0 +1,6 @@
+{
+  "app_port": 18080,
+  "db_port": 55433,
+  "host": "0.0.0.0",
+  "open_browser": true
+}

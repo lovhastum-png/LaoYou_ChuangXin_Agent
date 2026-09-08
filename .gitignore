@@ -13,4 +13,5 @@ android/**/build/
 android/local.properties
 artifacts/*.apk
 artifacts/*.zip
+artifacts/windows/
 .DS_Store

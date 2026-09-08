@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "checks": [
+    "camera continues uploading after leaving the preview page",
+    "child remote camera shutdown stops elder capture and blocks snapshots",
+    "scheduled reminder completes once on another page; synthesized completion is stubbed"
+  ],
+  "note": "Synthetic media and a speech-synthesis completion stub; no claim of acoustic ASR accuracy."
+}

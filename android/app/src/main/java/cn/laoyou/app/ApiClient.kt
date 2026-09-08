@@ -592,6 +592,9 @@ class ApiClient(baseUrl: String, var token: String? = null) {
         return "$root/call/$callId?token=${enc(token.orEmpty())}&embedded=1"
     }
 
+    /** Backend origin used by the loopback bridge for embedded WebView calls. */
+    fun callBackendUrl(): String = base.replace(Regex("/api/?$"), "")
+
     private fun enc(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
 }
 

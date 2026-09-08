@@ -1,0 +1,41 @@
+{
+  "base": "http://localhost:18880",
+  "passed": true,
+  "checks": [
+    "老人浏览器收到Android来电并接听",
+    "浏览器解码本机及安卓远端视频",
+    "Android挂断后浏览器同步结束"
+  ],
+  "media": [
+    {
+      "width": 480,
+      "height": 640,
+      "ready": 4,
+      "tracks": [
+        {
+          "kind": "audio",
+          "state": "live"
+        },
+        {
+          "kind": "video",
+          "state": "live"
+        }
+      ]
+    },
+    {
+      "width": 640,
+      "height": 480,
+      "ready": 4,
+      "tracks": [
+        {
+          "kind": "audio",
+          "state": "live"
+        },
+        {
+          "kind": "video",
+          "state": "live"
+        }
+      ]
+    }
+  ]
+}

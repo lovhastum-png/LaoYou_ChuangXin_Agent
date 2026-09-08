@@ -1,73 +1,72 @@
-# 老友
+# 老友 · LaoYou ChuangXin Agent
 
-面向独居老人的适老化总控屏，以及子女/社区安卓客户端。后端集中处理用户权限、提醒、观测规则、异常通知与处置记录。
+面向独居老人的适老化总控屏，以及子女、社区使用的照护应用。电脑提供大字网页和后端服务，手机查看健康记录、异常预警并进行视频通话。
 
-本项目仅实现已确认的11项需求。设备观测、120通知和放心医服务以明确标记的模拟方式验收；未配置的方言服务不会冒充可用。需求和验收范围见 [开发安排](docs/PLAN.md)，接口见 [API契约](docs/API.md)。
+当前是可运行的本地验收版本：设备行为、穿戴数据和120／放心医机构流程采用明确标记的模拟接入，业务记录和处置时间线真实持久化。功能与接入边界详见[项目总纲](doc/00-项目总纲.md)。
 
-## 在这台电脑启动
+## 直接下载使用
 
-双击根目录 **启动老友.cmd**，或在 PowerShell 7 中运行：
+无需下载源码，也无需安装开发IDE。
 
-```powershell
-./scripts/start.ps1 -OpenBrowser
+| 你要使用什么 | 下载 | 需要什么 |
+|---|---|---|
+| 电脑总控＋后端 | [Windows 便携包](https://github.com/falling-feather/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-windows-x64.zip) | Windows 10/11 x64，浏览器；包内自带Python及PostgreSQL |
+| 子女／社区手机端 | [安卓 APK](https://github.com/falling-feather/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-android.apk) | Android 8.0及以上，能访问已启动的电脑服务 |
+| 其他版本及校验值 | [Releases 下载页](https://github.com/falling-feather/LaoYou_ChuangXin_Agent/releases) | 可分别选择电脑包和APK |
+
+### 电脑端：解压后启动
+
+1. 将Windows ZIP完整解压到可写文件夹，双击 **启动老友.cmd**。
+2. 等待首次数据库准备完成，浏览器自动打开总控页面。
+3. 选择“老人屏”“家属端”或“社区端”，点击“进入老友”。
+4. 不用时双击 **停止老友.cmd**；关闭网页不会自动停止后端。
+
+默认电脑地址为 `http://localhost:18080`。检查运行状态用 **查看状态.cmd**。数据随电脑包保留，更新前先停止服务并按[备份与更新说明](doc/01-子文档/12-安装使用与维护.md#5-停止备份与更新)操作。
+
+### 手机端：安装后连接电脑
+
+1. 安装APK，手机与电脑连接同一个家庭或办公局域网。
+2. 在电脑包中双击 **手机连接说明.cmd**，将显示的地址填入APP“服务地址”，例如 `http://192.168.1.100:18080`。
+3. 使用子女或社区账号登录；通话时允许摄像头和麦克风。Windows询问网络权限时允许可信的专用网络。
+
+手机不能填写电脑上的 `localhost`。电脑需要保持开机且服务运行；跨公网访问需要另行部署。APK为使用固定调试证书签名的验收安装包，未上架应用商店。
+
+| 演示身份 | 账号 | 密码 |
+|---|---|---|
+| 老人 | `elder` | `Laoyou123!` |
+| 子女 | `child` | `Laoyou123!` |
+| 社区 | `community` | `Laoyou123!` |
+| 演示管理 | `admin` | `Laoyou123!` |
+
+完整操作、权限、提醒、摄像头、通话和故障排查见[安装使用与维护](doc/01-子文档/12-安装使用与维护.md)。老人网页需保持打开才能播报、采集快照和接听来电；APP被系统冻结或关闭后不保证即时通知。
+
+## 开发者入口
+
+一个仓库维护三部分，通过HTTP API和WebSocket协作。可以只修改目标端，运行时仍需连接后端。
+
+| 要开发的部分 | 目录 | 技术 |
+|---|---|---|
+| 适老化总控／家属网页 | [web](web) · [仅下载Web源码](https://github.com/falling-feather/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-web-source.zip) | Vue 3、TypeScript、Vite |
+| 智能指令、规则、用户和数据服务 | [backend](backend) · [仅下载后端源码](https://github.com/falling-feather/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-backend-source.zip) | Python 3.11、FastAPI、PostgreSQL |
+| 子女／社区APP | [android](android) · [仅下载Android源码](https://github.com/falling-feather/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-android-source.zip) | Kotlin、Jetpack Compose，包含通话WebView |
+| Windows封包和启动器 | [packaging](packaging) | 包内运行环境、初始化和进程管理 |
+
+下载源码使用仓库的 **Code → Download ZIP**，或：
+
+```bash
+git clone https://github.com/falling-feather/LaoYou_ChuangXin_Agent.git
 ```
 
-总控页面：`http://localhost:8000`。API文档：`http://localhost:8000/docs`。后端健康：`http://localhost:8000/api/health`。
+普通用户下载上方Release中的包体；GitHub自动提供的“Source code”是源码，需要自行准备开发环境。
 
-演示账号：`elder`（老人屏）、`child`（子女）、`community`（社区）、`admin`（演示管理）。密码均为 `Laoyou123!`。这些是虚构家庭的本机演示账号，不是公开部署的生产配置。
+- [开发者文档](doc/01-开发者文档.md)：架构、数据、权限、全部功能逻辑、修改入口、构建和测试。
+- [接口契约](doc/01-子文档/11-接口契约.md)：HTTP／WebSocket调用约定。
+- [安装与维护](doc/01-子文档/12-安装使用与维护.md#7-开发者维护)：分发包、更新和签名说明。
+- [项目规划](doc/02-项目规划.md)及[开发历史](doc/03-开发历史.md)：当前任务和实际验证记录。
+- [封包与跨端验收](doc/03-子文档/32-封包与跨端验收.md)：启动、持久化、接口及安卓模拟器与浏览器双向通话证据和未测边界。
 
-关闭服务：
+仓库不包含本机数据库、凭据、Android签名密钥或IDE。请按[环境准备](doc/01-开发者文档.md#152-新开发者环境准备)配置；直接复制开发机虚拟环境不能替代安装依赖。
 
-```powershell
-./scripts/stop.ps1
-```
+## 协议
 
-数据库保留在 `runtime/postgres-data`，停止服务不会删除数据。数据库仅监听本机 `127.0.0.1:55432`，后台连接凭据在未纳入Git的 `runtime/local.env`。
-
-## 安卓端
-
-安装包完成构建后位于 `artifacts/laoyou-debug.apk`。手机和电脑在同一局域网时，在APP登录页将服务地址改为 `http://电脑局域网IP:8000`。
-
-这台电脑的验收模拟器通过ADB反向端口连接，在APP填 `http://127.0.0.1:8000`：
-
-```powershell
-& 'D:/Android/Sdk/platform-tools/adb.exe' -s emulator-5554 reverse tcp:8000 tcp:8000
-```
-
-浏览器媒体权限要求安全上下文。电脑用 `localhost`，验收模拟器用ADB反向连接的 `127.0.0.1`；普通局域网HTTP地址可以读取业务数据，但浏览器/WebView可能不允许摄像头和麦克风。公网音视频未作为已接通能力承诺。
-
-## 开发与复验
-
-固定技术：Vue3/TypeScript、FastAPI/Python3.11/PostgreSQL、Kotlin/Compose。入口分别为 `web/`、`backend/app/main.py`、`android/`。
-
-```powershell
-./scripts/build-web.ps1
-./backend/.venv/Scripts/python.exe -X utf8 -m pytest backend/tests -q
-./backend/.venv/Scripts/python.exe -X utf8 scripts/smoke_api.py --base http://127.0.0.1:8000
-```
-
-最后一条会创建带“联通测试”说明的模拟事件，保留审计记录并删除临时提醒，请只在演示数据中运行。开发验收使用独立数据库，结果见 [验收记录](docs/ACCEPTANCE.md)。
-
-需要隔离复验时，运行 `./backend/.venv/Scripts/python.exe -X utf8 scripts/start-acceptance.py`，再把测试地址改为 `http://localhost:8001`。`scripts/stop.ps1` 会停止本项目管理的普通与验收后端。
-
-所有项目文件均在本工作区。下载缓存、测试截图、日志及Gradle缓存统一放 `tmp/`；可运行工具及数据库放 `runtime/`，二者不纳入Git。
-
-Windows PostgreSQL在中文二进制路径下初始化UTF-8数据库会失败，因此 `scripts/database.py` 使用经 `samefile` 校验的 `L:` 工作区别名。它始终映射回本目录，不复制或转移文件；如果L盘已被其他用途占用，脚本会停止并报错。没有安装Windows数据库服务。
-
-后端依赖已锁定在 `backend/requirements.lock.txt`；安卓调试签名位于 `runtime/android-debug.keystore`，仅用于本次验收包。
-
-重新编译安卓端时，在项目根目录运行：
-
-```powershell
-$env:JAVA_HOME='C:/Program Files/Java/jdk-17'
-$env:GRADLE_USER_HOME=Join-Path (Get-Location).Path 'tmp/gradle-home'
-./android/gradlew.bat -p android :app:assembleDebug
-```
-
-Android Studio 打开 `android/`，Gradle JDK选择17；本项目使用的Gradle8.13不应直接改用IDE自带的JBR25。
-
-## 可配置语音
-
-普通话可用浏览器设备语音与文字入口；方言服务接口支持普通话、粤语、四川话、东北话选项。若需要讯飞识别，在 `runtime/local.env` 增加服务账号自己的 `XFYUN_APP_ID`、`XFYUN_API_KEY`、`XFYUN_API_SECRET`，并在服务方开通相应方言权限后重启后端。密钥仅在后端使用，录音不落盘。
-
-未配置时会明确显示能力限制。服务凭据、真实方言识别准确率、真实设备及机构送达属于外部接入验证，实际完成情况以交付验证记录为准。
+本项目源码采用 [MIT License](LICENSE)。包内Python、PostgreSQL及其他依赖仍适用各自许可证，随Windows包保留第三方许可信息。

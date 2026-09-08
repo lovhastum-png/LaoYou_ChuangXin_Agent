@@ -1,0 +1,31 @@
+{
+  "repository": "falling-feather/LaoYou_ChuangXin_Agent",
+  "tag": "delivery-2026-09-09",
+  "assets": [
+    {
+      "name": "laoyou-windows-x64.zip",
+      "bytes": 54604632,
+      "sha256": "83d7f7362d51959c374cf388cc9d56ebfaaab4847bce77fefd102933c2292459"
+    },
+    {
+      "name": "laoyou-android.apk",
+      "bytes": 11155274,
+      "sha256": "7b7467011e9c041ac1e9bf59f1b1bf63d807babf6b52d38c3ba10f34c088ea97"
+    },
+    {
+      "name": "laoyou-web-source.zip",
+      "bytes": 71033,
+      "sha256": "cf7debfc72cc55dd07a2710954edffdb2da72405f2d3d94f5c9e95ba4caeb90b"
+    },
+    {
+      "name": "laoyou-backend-source.zip",
+      "bytes": 39237,
+      "sha256": "1b738153968c394a8520308814d124427982d5b9ee24098f6709efc02cfa4e9f"
+    },
+    {
+      "name": "laoyou-android-source.zip",
+      "bytes": 78334,
+      "sha256": "c5d97cebfe737df983ade06a66bf50f3ed631318d972a496c62d562973ccc894"
+    }
+  ]
+}

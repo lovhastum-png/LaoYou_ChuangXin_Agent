@@ -1,6 +1,7 @@
 {
-  "file": "laoyou-debug.apk",
-  "sha256": "D227DF9500025D5802A4E7FAE1D18C20EBDFC74BF2431C611803BE5F6093FBF7",
+  "file": "laoyou-android.apk",
+  "legacyFile": "laoyou-debug.apk",
+  "sha256": "7B7467011E9C041AC1E9BF59F1B1BF63D807BABF6B52D38C3BA10F34C088EA97",
   "build": "debug",
   "minAndroidApi": 26,
   "targetAndroidApi": 36,

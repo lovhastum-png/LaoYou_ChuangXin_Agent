@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "media_capabilities": {
+    "secure": true,
+    "media": true,
+    "getUserMedia": true
+  },
+  "apk_sha256": "7B7467011E9C041AC1E9BF59F1B1BF63D807BABF6B52D38C3BA10F34C088EA97",
+  "base_url": "http://10.0.2.2:18880/api",
+  "adb_reverse": false,
+  "expectRemoteVideo": true,
+  "instrumentation": "1/1 SUCCESS"
+}

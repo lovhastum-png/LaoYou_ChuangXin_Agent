@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "check": "真实浏览器登录、主屏、天气和助手入口",
+      "status": "passed"
+    },
+    {
+      "check": "网页创建提醒并通过家属接口读回",
+      "status": "passed"
+    },
+    {
+      "check": "412px窄屏无横向溢出",
+      "status": "passed"
+    },
+    {
+      "check": "家属工作台登录和数据读取",
+      "status": "passed"
+    },
+    {
+      "check": "助手发起、首页来电接听、双端WebRTC解码、双方挂断状态",
+      "status": "passed"
+    },
+    {
+      "check": "无浏览器运行时错误",
+      "status": "passed"
+    }
+  ],
+  "errors": []
+}

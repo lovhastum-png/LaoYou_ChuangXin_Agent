@@ -1,0 +1,15 @@
+Microsoft Visual C++ Runtime
+
+本包runtime/python与runtime/postgresql/bin包含Microsoft Visual Studio正式
+VC/Redist/MSVC/x64 CRT目录中的未修改运行库。它们不属于本项目MIT授权范围，
+仍受Microsoft软件许可条款约束；具体文件版本见包根目录的版本信息.json。
+
+再分发清单及条款入口：
+https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution
+https://visualstudio.microsoft.com/license-terms/
+
+本地部署说明：
+https://learn.microsoft.com/en-us/cpp/windows/deployment-in-visual-cpp
+
+维护人员重建包时应使用合法取得的Visual Studio Redist运行库，不得使用
+debug_nonredist或任意来源DLL。应用本地部署的运行库随软件包更新。

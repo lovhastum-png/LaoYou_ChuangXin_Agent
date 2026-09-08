@@ -129,7 +129,10 @@ private fun LaoyouApp() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("laoyou", Context.MODE_PRIVATE) }
     val scope = rememberCoroutineScope()
-    var baseUrl by rememberSaveable { mutableStateOf(prefs.getString("base_url", "http://10.0.2.2:8000/api") ?: "http://10.0.2.2:8000/api") }
+    // Do not prefill the emulator-only address on a real phone.  The packaged
+    // desktop service is reached through the computer's LAN address (usually
+    // port 18080), while instrumentation still supplies its own test URL.
+    var baseUrl by rememberSaveable { mutableStateOf(prefs.getString("base_url", "") ?: "") }
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var api by remember { mutableStateOf<ApiClient?>(null) }
@@ -311,7 +314,9 @@ private fun LaoyouApp() {
                 error = error ?: loginMessage,
                 onLogin = {
                     val normalized = normalizeBaseUrl(baseUrl)
-                    if (username.isBlank() || password.isBlank()) {
+                    if (baseUrl.isBlank()) {
+                        loginMessage = "请先填写服务地址，例如 http://192.168.1.100:18080"
+                    } else if (username.isBlank() || password.isBlank()) {
                         loginMessage = "请输入账号和密码"
                     } else {
                         loginMessage = null
@@ -352,6 +357,7 @@ private fun LaoyouApp() {
             activeCall != null -> CallWebViewScreen(
                 call = activeCall!!,
                 callUrl = api!!.callWebUrl(activeCall!!.id),
+                backendUrl = api!!.callBackendUrl(),
                 onBack = ::endActiveCallFromApp,
                 onAction = { action ->
                     val client = api
@@ -537,9 +543,17 @@ private fun LoginScreen(
             Text("老友", fontSize = 38.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Text("子女与社区照护", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(10.dp))
-            Text("登录后可查看已关联家人的老人、事件和通知。服务地址适合局域网或模拟器环境。", color = Color(0xFF455A64))
+            Text("登录后可查看已关联家人的老人、事件和通知。首次使用请填写电脑总控的地址。", color = Color(0xFF455A64))
             Spacer(Modifier.height(24.dp))
-            OutlinedTextField(baseUrl, onBaseUrlChange, label = { Text("服务地址") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                value = baseUrl,
+                onValueChange = onBaseUrlChange,
+                label = { Text("服务地址") },
+                placeholder = { Text("例如：http://192.168.1.100:18080") },
+                supportingText = { Text("APP 会自动补上 /api；模拟器可填 http://10.0.2.2:8000") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(username, onUsernameChange, label = { Text("账号") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
@@ -1056,26 +1070,52 @@ private fun CallsScreen(role: String, calls: List<CallModel>, onRefresh: () -> U
 }
 
 @Composable
-private fun CallWebViewScreen(call: CallModel, callUrl: String, onBack: () -> Unit, onAction: (String) -> Unit) {
+private fun CallWebViewScreen(
+    call: CallModel,
+    callUrl: String,
+    backendUrl: String,
+    onBack: () -> Unit,
+    onAction: (String) -> Unit
+) {
     val context = LocalContext.current
     var permissionRefresh by remember { mutableStateOf(0) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissionRefresh++ }
     val hasCamera = remember(permissionRefresh) { ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED }
     val hasMic = remember(permissionRefresh) { ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED }
+    var callProxy by remember(call.id, backendUrl) { mutableStateOf<LocalCallProxy?>(null) }
+    var proxyError by remember(call.id, backendUrl) { mutableStateOf<String?>(null) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    DisposableEffect(call.id, backendUrl) {
+        val proxy = runCatching { LocalCallProxy.fromBackendUrl(backendUrl).start() }
+            .onFailure { proxyError = it.message ?: "无法启动通话连接" }
+            .getOrNull()
+        callProxy = proxy
+        onDispose {
+            webViewRef?.apply { stopLoading(); destroy() }
+            webViewRef = null
+            callProxy = null
+            proxy?.close()
+        }
+    }
+    val localCallUrl = callProxy?.localUrlFor(callUrl)
     LaunchedEffect(call.id) {
         if (!hasCamera || !hasMic) permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
     }
-    LaunchedEffect(permissionRefresh, callUrl, webViewRef) {
-        if (permissionRefresh > 0 && hasCamera && hasMic) webViewRef?.loadUrl(callUrl)
+    LaunchedEffect(permissionRefresh, localCallUrl, webViewRef) {
+        if (permissionRefresh > 0 && hasCamera && hasMic) webViewRef?.loadUrl(localCallUrl ?: return@LaunchedEffect)
     }
     BackHandler(enabled = true, onBack = onBack)
-    DisposableEffect(Unit) { onDispose { webViewRef?.apply { stopLoading(); destroy() } } }
     Column(Modifier.fillMaxSize().background(Color.Black)) {
         Row(Modifier.fillMaxWidth().background(Color(0xFF101820)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("‹ 返回", color = Color.White) }
             Text("家人视频通话", color = Color.White, modifier = Modifier.weight(1f))
             if (call.status == "active" || call.status == "ringing") TextButton(onClick = { onAction("end") }) { Text("挂断", color = Color(0xFFFFB4AB)) }
+        }
+        if (proxyError != null) {
+            Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("无法建立安全通话连接：${proxyError}", color = Color.White)
+                Text("请检查服务地址和电脑是否已启动。", color = Color(0xFFB0BEC5), modifier = Modifier.padding(top = 8.dp))
+            }
         }
         if (!hasCamera || !hasMic) {
             Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1083,49 +1123,51 @@ private fun CallWebViewScreen(call: CallModel, callUrl: String, onBack: () -> Un
                 OutlinedButton(onClick = { permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)) }, modifier = Modifier.padding(top = 12.dp)) { Text("授予权限") }
             }
         }
-        AndroidView(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            factory = { ctx ->
-                WebView(ctx).apply {
-                    webViewRef = this
-                    layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.mediaPlaybackRequiresUserGesture = false
-                    // The call page has a device-width viewport. Respect it at the final MATCH_PARENT size
-                    // instead of loading an overview-scaled page during the initial zero-size measure.
-                    settings.useWideViewPort = true
-                    settings.loadWithOverviewMode = false
-                    webViewClient = object : WebViewClient() {
-                        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                            return !sameOrigin(request.url, Uri.parse(callUrl))
-                        }
-                    }
-                    webChromeClient = object : WebChromeClient() {
-                        override fun onPermissionRequest(request: PermissionRequest) {
-                            val origin = runCatching { Uri.parse(request.origin.toString()) }.getOrNull()
-                            val expected = Uri.parse(callUrl)
-                            val allowedOrigin = origin != null && sameOrigin(origin, expected)
-                            val cameraGranted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-                            val micGranted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-                            val requestedResources = request.resources.toSet()
-                            val supportedResources = requestedResources.filter {
-                                it == PermissionRequest.RESOURCE_VIDEO_CAPTURE || it == PermissionRequest.RESOURCE_AUDIO_CAPTURE
+        localCallUrl?.let { pageUrl ->
+            AndroidView(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        webViewRef = this
+                        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.mediaPlaybackRequiresUserGesture = false
+                        // The call page has a device-width viewport. Respect it at the final MATCH_PARENT size
+                        // instead of loading an overview-scaled page during the initial zero-size measure.
+                        settings.useWideViewPort = true
+                        settings.loadWithOverviewMode = false
+                        webViewClient = object : WebViewClient() {
+                            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                                return !sameOrigin(request.url, Uri.parse(pageUrl))
                             }
-                            val hasUnsupportedResource = requestedResources.any { it !in supportedResources }
-                            val allowed = allowedOrigin && !hasUnsupportedResource && supportedResources.isNotEmpty() &&
-                                (!requestedResources.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE) || cameraGranted) &&
-                                (!requestedResources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE) || micGranted)
-                            if (allowed) request.grant(supportedResources.toTypedArray()) else request.deny()
                         }
+                        webChromeClient = object : WebChromeClient() {
+                            override fun onPermissionRequest(request: PermissionRequest) {
+                                val origin = runCatching { Uri.parse(request.origin.toString()) }.getOrNull()
+                                val expected = Uri.parse(pageUrl)
+                                val allowedOrigin = origin != null && sameOrigin(origin, expected)
+                                val cameraGranted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                                val micGranted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                                val requestedResources = request.resources.toSet()
+                                val supportedResources = requestedResources.filter {
+                                    it == PermissionRequest.RESOURCE_VIDEO_CAPTURE || it == PermissionRequest.RESOURCE_AUDIO_CAPTURE
+                                }
+                                val hasUnsupportedResource = requestedResources.any { it !in supportedResources }
+                                val allowed = allowedOrigin && !hasUnsupportedResource && supportedResources.isNotEmpty() &&
+                                    (!requestedResources.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE) || cameraGranted) &&
+                                    (!requestedResources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE) || micGranted)
+                                if (allowed) request.grant(supportedResources.toTypedArray()) else request.deny()
+                            }
+                        }
+                        // AndroidView creates the WebView before its weighted height is measured. Start the
+                        // first navigation on the next UI turn so CSS 100vh sees the actual call-stage size.
+                        post { loadUrl(pageUrl) }
                     }
-                    // AndroidView creates the WebView before its weighted height is measured. Start the
-                    // first navigation on the next UI turn so CSS 100vh sees the actual call-stage size.
-                    post { loadUrl(callUrl) }
-                }
-            },
-            update = { }
-        )
+                },
+                update = { }
+            )
+        }
     }
 }
 
