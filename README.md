@@ -56,6 +56,16 @@ Windows PostgreSQL在中文二进制路径下初始化UTF-8数据库会失败，
 
 后端依赖已锁定在 `backend/requirements.lock.txt`；安卓调试签名位于 `runtime/android-debug.keystore`，仅用于本次验收包。
 
+重新编译安卓端时，在项目根目录运行：
+
+```powershell
+$env:JAVA_HOME='C:/Program Files/Java/jdk-17'
+$env:GRADLE_USER_HOME=Join-Path (Get-Location).Path 'tmp/gradle-home'
+./android/gradlew.bat -p android :app:assembleDebug
+```
+
+Android Studio 打开 `android/`，Gradle JDK选择17；本项目使用的Gradle8.13不应直接改用IDE自带的JBR25。
+
 ## 可配置语音
 
 普通话可用浏览器设备语音与文字入口；方言服务接口支持普通话、粤语、四川话、东北话选项。若需要讯飞识别，在 `runtime/local.env` 增加服务账号自己的 `XFYUN_APP_ID`、`XFYUN_API_KEY`、`XFYUN_API_SECRET`，并在服务方开通相应方言权限后重启后端。密钥仅在后端使用，录音不落盘。
