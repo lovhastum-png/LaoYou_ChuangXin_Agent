@@ -11,12 +11,13 @@ android/.gradle/
 android/.kotlin/
 android/**/build/
 android/local.properties
+# 打包产物体积大且可重建，不进版本库。
 artifacts/*.apk
-artifacts/*.zip
 artifacts/windows/
-# QA 截图是二进制证据，留在工作区即可，不进版本库。
-artifacts/qa/
 # 文档生成流水线的中间产物（用 doc 目录下的源 Markdown 可完整重建）。
 output/
 .workbuddy/
 .DS_Store
+
+# 说明：artifacts/qa/（QA 截图与结果 JSON）、artifacts/ppt-素材/_原始压缩包/*.zip
+# 都是刻意保留在版本库里的历史证据，见 doc/03-开发历史.md，不要加规则排除它们。
