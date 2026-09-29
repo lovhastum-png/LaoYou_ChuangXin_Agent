@@ -733,9 +733,27 @@ def parse_hour(text: str) -> int | None:
     return parse_chinese_number(match.group(1))
 
 
+def _has_reminder_intent(normalized: str) -> bool:
+    """判断这句话是不是在要求"定时做某事"。
+
+    口语里老人不会说"提醒"两个字，会说"叫我吃药""几点吃药"。
+    这里放宽为三类信号，任一成立即进入时间/药物解析：
+      1. 显式提醒词：提醒、闹钟、定时、叫我、喊我
+      2. 用药动词：吃、服、用药、服药
+      3. 服药名词：药、片、胶囊、冲剂、口服液、汤药
+    放宽只影响"是否尝试解析"，时间点仍由 parse_hour 严格校验，
+    所以"每天提醒我吃降压药"这种缺时间的句子依旧返回 None。
+    """
+    if any(word in normalized for word in ("提醒", "闹钟", "定时", "叫我", "喊我")):
+        return True
+    if any(word in normalized for word in ("吃", "服", "用药", "服药")):
+        return True
+    return any(word in normalized for word in ("药", "片", "胶囊", "冲剂", "口服液", "汤药"))
+
+
 def parse_reminder(text: str) -> dict[str, Any] | None:
     normalized = re.sub(r"\s+", "", text)
-    if not ("提醒" in normalized and ("吃" in normalized or "服" in normalized)):
+    if not _has_reminder_intent(normalized):
         return None
     hour = parse_hour(normalized)
     if hour is None:
@@ -770,8 +788,17 @@ def parse_reminder(text: str) -> dict[str, Any] | None:
         hour += 12
     if hour > 23 or minute > 59:
         return None
-    medicine_match = re.search(r"(?:吃|服用?|服)([^，。,\s。]+)", normalized)
-    medicine = medicine_match.group(1) if medicine_match else "药物"
+    # 药物名必须紧跟在用药动词之后，且只取一个词。
+    # 原实现用 [^，。,\s。]+ 会一路吃到句尾，在"叫我吃药吃降压片"里
+    # 会抓出"药吃降压片"。这里按动词切分后取最后一个候选——
+    # "吃药"只是泛称，"吃降压片"才是药名。泛称（药/药物/片）要过滤掉，
+    # 否则会把"吃药"当成药名。
+    medicine = "药物"
+    for match in re.finditer(r"(?:服用?|吃|喝)(?P<name>[^，。,.!？?\s。]+)", normalized):
+        for piece in re.split(r"(?:服用?|吃|喝|提醒|叫我|记得|别忘)", match.group("name")):
+            candidate = re.sub(r"^(?:个|点)+", "", piece).strip()
+            if candidate and not re.fullmatch(r"药|药物|片|颗|粒|胶囊|冲剂|口服液|汤药", candidate):
+                medicine = candidate
     return {
         "title": f"{medicine}提醒",
         "medicine": medicine,

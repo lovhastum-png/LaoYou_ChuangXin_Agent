@@ -143,6 +143,8 @@ async function request<T>(path: string, init: RequestInit = {}, authToken?: stri
   const contentType = response.headers.get('content-type') || ''
   if (contentType.includes('application/json')) return (await response.json()) as T
   if (contentType.startsWith('image/')) return (await response.blob()) as T
+  // 语音播报返回 MP3 字节；blob 才能交给 <audio> 播放。
+  if (contentType.startsWith('audio/')) return (await response.blob()) as T
   return (await response.text()) as T
 }
 
@@ -239,11 +241,22 @@ export const api = {
       ...(confirmToken ? { confirm_token: confirmToken } : {}),
     })
   },
-  speech(elderId: string, dialect: string, pcm: Blob): Promise<{ text: string; dialect: string; provider: string }> {
+  speech(elderId: string, dialect: string, pcm: Blob): Promise<{ text: string; dialect: string; provider: string; normalized?: boolean }> {
     return request(`/elders/${encodeURIComponent(elderId)}/speech?dialect=${encodeURIComponent(dialect)}`, {
       method: 'POST',
       body: pcm,
       headers: { 'Content-Type': 'audio/L16' },
+    })
+  },
+  /**
+   * 服务端方言语音合成。返回 MP3。
+   * 失败时应由调用方降级到浏览器 speechSynthesis，不要把它当唯一通路。
+   */
+  synthesizeSpeech(elderId: string, text: string, dialect: string): Promise<Blob> {
+    return request(`/elders/${encodeURIComponent(elderId)}/speech/synthesize`, {
+      method: 'POST',
+      body: JSON.stringify({ text, dialect }),
+      headers: { 'Content-Type': 'application/json' },
     })
   },
   calls(elderId: string): Promise<Call[]> {

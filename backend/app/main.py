@@ -46,6 +46,7 @@ from .models import (
 )
 from .schemas import (
     AssistantRequest,
+    SpeechSynthesisRequest,
     CallAction,
     ElderSettingsPatch,
     EscortAction,
@@ -1075,10 +1076,16 @@ async def transcribe_speech(
     elder_id: str,
     request: Request,
     dialect: str | None = Query(default=None),
+    provider: str | None = Query(default=None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """讯飞语音边界：只接收 16k/16bit/单声道原始 PCM，结果仍需由本地助手解释。"""
+    """语音识别边界：只接收 16k/16bit/单声道原始 PCM，结果仍需由本地助手解释。
+
+    方言走通义千问多模态模型，顺带把方言词归一化为普通话书面语，
+    以便现有规则助手直接消费；普通话仍优先走讯飞（延迟更低）。
+    可用 provider 参数强制指定后端，仅用于排查。
+    """
     elder = load_elder(db, user, elder_id, forbidden_status=403)
     if user.role not in {"elder", "child", "admin"}:
         raise HTTPException(status_code=403, detail="当前身份不能使用语音入口")
@@ -1092,39 +1099,172 @@ async def transcribe_speech(
     requested_dialect = dialect or elder.dialect or "zh-CN"
     if requested_dialect not in VALID_DIALECTS:
         raise HTTPException(status_code=422, detail="不支持的方言标识")
+
+    chosen = _pick_speech_provider(requested_dialect, provider)
+    if chosen == "qwen":
+        text = await _transcribe_with_qwen(audio, requested_dialect)
+        return {
+            "text": text,
+            "dialect": requested_dialect,
+            "provider": "qwen",
+            "normalized": requested_dialect != "zh-CN",
+        }
+    text = await _transcribe_with_xfyun(audio, requested_dialect)
+    return {"text": text, "dialect": requested_dialect, "provider": "xfyun", "normalized": False}
+
+
+def _pick_speech_provider(dialect: str, forced: str | None) -> str:
+    """方言优先用通义千问：只有它能顺带做方言归一，讯飞只给原样转写。"""
+    from .integrations import qwen_asr, xfyun
+
+    qwen_ready = qwen_asr.is_configured()
+    xfyun_ready = xfyun.is_configured()
+    if forced == "qwen":
+        if not qwen_ready:
+            raise HTTPException(status_code=503, detail="尚未配置通义千问语音服务")
+        return "qwen"
+    if forced == "xfyun":
+        if not xfyun_ready:
+            raise HTTPException(status_code=503, detail="尚未配置讯飞语音服务")
+        return "xfyun"
+    if dialect != "zh-CN":
+        if qwen_ready:
+            return "qwen"
+        if xfyun_ready:
+            return "xfyun"
+        raise HTTPException(status_code=503, detail="尚未配置方言识别服务，请使用文字入口")
+    return "qwen" if qwen_ready and not xfyun_ready else "xfyun"
+
+
+async def _transcribe_with_qwen(audio: bytes, dialect: str) -> str:
+    from .integrations.qwen_asr import (
+        SpeechServiceError as QwenError,
+        transcribe_audio,
+        wrap_pcm_as_wav,
+    )
+
+    wav = wrap_pcm_as_wav(audio)
     try:
-        from .integrations.xfyun import SpeechServiceError, transcribe_pcm
+        return await transcribe_audio(wav, dialect, extension="wav", normalize=True)
+    except QwenError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("通义千问语音识别失败：%s", exc)
+        raise HTTPException(status_code=502, detail="语音服务暂时不可用") from exc
+
+
+async def _transcribe_with_xfyun(audio: bytes, dialect: str) -> str:
+    try:
+        from .integrations.xfyun import SpeechServiceError as XfyunError, transcribe_pcm
     except ImportError as exc:
         raise HTTPException(status_code=503, detail="讯飞语音适配器未安装或未配置") from exc
     try:
-        text = await transcribe_pcm(audio=audio, dialect=requested_dialect)
-    except SpeechServiceError as exc:
+        return await transcribe_pcm(audio=audio, dialect=dialect)
+    except XfyunError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except Exception as exc:
         logger.warning("讯飞语音识别失败：%s", exc)
         raise HTTPException(status_code=502, detail="讯飞语音服务暂不可用") from exc
-    return {"text": text, "dialect": requested_dialect, "provider": "xfyun"}
+
+
+@app.post("/api/elders/{elder_id}/speech/synthesize")
+async def synthesize_speech(
+    elder_id: str,
+    payload: SpeechSynthesisRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """把回复文字合成为方言语音，返回 MP3 字节。
+
+    浏览器端优先用这里的音频（能说东北话/粤语），失败再降级到
+    speechSynthesis。返回头 X-Voice 告知实际使用的音色，便于排查
+    "为什么不是方言音"——例如四川话目前没有免费音色，会回落普通话。
+    """
+    elder = load_elder(db, user, elder_id, forbidden_status=403)
+    if user.role not in {"elder", "child", "admin"}:
+        raise HTTPException(status_code=403, detail="当前身份不能使用语音播报")
+
+    requested_dialect = payload.dialect or elder.dialect or "zh-CN"
+    if requested_dialect not in VALID_DIALECTS:
+        raise HTTPException(status_code=422, detail="不支持的方言标识")
+
+    try:
+        from .integrations.edge_tts import SpeechServiceError as TtsError, synthesize
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail="语音播报组件未安装") from exc
+
+    try:
+        audio, voice = await synthesize(payload.text, requested_dialect)
+    except TtsError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("语音合成失败：%s", exc)
+        raise HTTPException(status_code=502, detail="语音播报服务暂时不可用") from exc
+
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={
+            "X-Voice": voice,
+            "X-Dialect": requested_dialect,
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @app.get("/api/capabilities")
 def capabilities() -> dict[str, Any]:
     try:
-        from .integrations.xfyun import is_configured
+        from .integrations import qwen_asr, xfyun
 
-        xfyun_configured = is_configured()
+        xfyun_configured = xfyun.is_configured()
+        qwen_configured = qwen_asr.is_configured()
     except ImportError:
-        xfyun_configured = False
+        xfyun_configured = qwen_configured = False
+    try:
+        from .integrations import edge_tts
+
+        tts_configured = edge_tts.is_configured()
+        has_dialect_voice = edge_tts.has_dialect_voice
+    except ImportError:
+        tts_configured = False
+        has_dialect_voice = lambda _dialect: False  # noqa: E731
+    dialect_ready = qwen_configured or xfyun_configured
+    if qwen_configured:
+        provider = "qwen"
+        dialect_note = "已配置通义千问语音识别，方言会归一化为普通话。实际可用性以服务返回为准。"
+    elif xfyun_configured:
+        provider = "xfyun"
+        dialect_note = "已配置讯飞方言域；账号需另行开通授权，实际可用性以服务返回为准。"
+    else:
+        provider = "browser"
+        dialect_note = "未配置方言识别服务，请使用文字入口。"
     return {
         "assistant_mode": "local_rules",
         "speech": {
-            "provider": "xfyun" if xfyun_configured else "browser",
-            "configured": xfyun_configured,
+            "provider": provider,
+            "configured": dialect_ready,
+            "normalizes_dialect": qwen_configured,
             "dialects": [
                 {"id": "zh-CN", "label": "普通话", "available": True, "note": "浏览器系统语音/文字入口。"},
-                {"id": "yue-HK", "label": "粤语", "available": xfyun_configured, "note": "需配置讯飞 ASR。" if not xfyun_configured else "已配置讯飞 ASR。"},
-                {"id": "sichuan", "label": "四川话", "available": xfyun_configured, "note": "未配置讯飞方言识别服务，请使用文字入口。" if not xfyun_configured else "已配置讯飞方言域；账号需另行开通授权，实际可用性以服务返回为准。"},
-                {"id": "northeast", "label": "东北话", "available": xfyun_configured, "note": "未配置讯飞方言识别服务，请使用文字入口。" if not xfyun_configured else "已配置讯飞方言域；账号需另行开通授权，实际可用性以服务返回为准。"},
+                {"id": "yue-HK", "label": "粤语", "available": dialect_ready, "note": dialect_note},
+                {"id": "sichuan", "label": "四川话", "available": dialect_ready, "note": dialect_note},
+                {"id": "northeast", "label": "东北话", "available": dialect_ready, "note": dialect_note},
             ],
+        },
+        "tts": {
+            "provider": "edge_tts" if tts_configured else "browser_speech_synthesis",
+            "server_side": tts_configured,
+            "dialect_voices": [
+                {"id": dialect, "available": tts_configured and has_dialect_voice(dialect)}
+                for dialect in ("zh-CN", "yue-HK", "sichuan", "northeast")
+            ] if tts_configured else [],
+            "note": (
+                "服务端合成方言语音，失败时前端降级到浏览器语音合成。"
+                "四川话暂无免费音色，会用普通话读出归一化后的文本。"
+                if tts_configured
+                else "回复播报使用浏览器语音合成；四川话/东北话音色取决于设备，缺失时回落到普通话。"
+            ),
         },
         "video": {"mode": "webrtc_signaling"},
         "integrations": {

@@ -147,5 +147,12 @@ class AssistantRequest(BaseModel):
     confirm_token: str | None = Field(default=None, max_length=256)
 
 
+class SpeechSynthesisRequest(BaseModel):
+    """播报请求。text 上限与 edge_tts 适配器的 MAX_TEXT_LENGTH 对齐。"""
+
+    text: str = Field(min_length=1, max_length=300)
+    dialect: str | None = Field(default=None, max_length=32)
+
+
 class CallAction(BaseModel):
     action: Literal["answer", "end", "decline"]

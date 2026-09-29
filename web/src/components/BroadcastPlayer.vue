@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Volume2 } from 'lucide-vue-next'
 import { api, ApiError } from '../lib/api'
+import { speakReply, type SpeakHandle } from '../lib/speech'
 import type { Broadcast } from '../types'
 
 const props = defineProps<{ suspended?: boolean }>()
@@ -10,7 +11,9 @@ const voiceEnabled = ref(true)
 const error = ref('')
 const playingText = ref('')
 let timer: number | undefined
-let current: SpeechSynthesisUtterance | null = null
+let current: SpeakHandle | null = null
+/** 一次"识别并播报"的整轮是否在进行；服务端合成有往返，单靠 current 挡不住重入。 */
+let speakingRound = false
 let ticking = false
 let disposed = false
 // A completed utterance awaiting an HTTP acknowledgement must not be spoken again.
@@ -18,32 +21,34 @@ const pendingAcknowledgements = new Set<string>()
 
 function cancelOwnedSpeech() {
   if (!current) return
-  current.onend = null
-  current.onerror = null
-  window.speechSynthesis.cancel()
+  current.stop()
   current = null
   playingText.value = ''
+  speakingRound = false
 }
 
-function speak(item: Broadcast, dialect: string) {
-  const utterance = new SpeechSynthesisUtterance(item.text)
-  utterance.lang = dialect === 'yue-HK' ? 'zh-HK' : 'zh-CN'
-  utterance.rate = 0.92
-  current = utterance
+function speak(item: Broadcast, elderId: string, dialect: string) {
+  speakingRound = true
   playingText.value = item.text
-  utterance.onend = () => {
-    current = null
-    playingText.value = ''
-    pendingAcknowledgements.add(item.id)
-    void tick()
-  }
-  utterance.onerror = () => {
-    current = null
-    playingText.value = ''
-    ready.value = false
-    error.value = '提醒声音未能播放，请点击开启播报后重试。'
-  }
-  window.speechSynthesis.speak(utterance)
+  current = speakReply({
+    elderId,
+    text: item.text,
+    dialect,
+    onEnd: () => {
+      current = null
+      speakingRound = false
+      playingText.value = ''
+      pendingAcknowledgements.add(item.id)
+      void tick()
+    },
+    onError: () => {
+      current = null
+      speakingRound = false
+      playingText.value = ''
+      ready.value = false
+      error.value = '提醒声音未能播放，请点击开启播报后重试。'
+    },
+  })
 }
 
 async function tick() {
@@ -61,13 +66,14 @@ async function tick() {
       cancelOwnedSpeech()
       return
     }
-    if (!ready.value || !('speechSynthesis' in window) || window.speechSynthesis.speaking || current) return
+    // 服务端合成期间 speakingRound 为真，避免下一轮 5 秒轮询把同一条提醒再合成一次。
+    if (!ready.value || speakingRound) return
     const broadcasts = await api.broadcasts(elder.id)
     if (disposed || props.suspended) return
     const next = broadcasts.find(item => !item.played_at && !pendingAcknowledgements.has(item.id)
       && new Date(item.scheduled_at).getTime() <= Date.now())
     error.value = ''
-    if (next) speak(next, elder.dialect)
+    if (next) speak(next, elder.id, elder.dialect)
   } catch (cause) {
     error.value = cause instanceof ApiError ? cause.detail : '提醒记录同步暂不可用，正在等待恢复。'
   } finally {
@@ -76,10 +82,6 @@ async function tick() {
 }
 
 function enable() {
-  if (!('speechSynthesis' in window)) {
-    error.value = '此浏览器没有声音播报能力，请查看屏幕提醒。'
-    return
-  }
   ready.value = true
   error.value = ''
   void tick()
@@ -87,7 +89,8 @@ function enable() {
 
 watch(() => props.suspended, value => { if (value) cancelOwnedSpeech(); else void tick() })
 onMounted(() => {
-  ready.value = Boolean(navigator.userActivation?.hasBeenActive && 'speechSynthesis' in window)
+  // 不再要求 speechSynthesis 存在：服务端合成不依赖浏览器音色。
+  ready.value = Boolean(navigator.userActivation?.hasBeenActive)
   void tick()
   timer = window.setInterval(() => { void tick() }, 5000)
 })

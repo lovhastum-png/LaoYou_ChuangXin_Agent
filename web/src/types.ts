@@ -159,7 +159,14 @@ export interface Capabilities {
   speech: {
     provider: string
     configured: boolean
+    /** 为 true 时方言会先归一化成普通话，再交给规则助手。 */
+    normalizes_dialect?: boolean
     dialects: Array<{ id: string; label: string; available: boolean; note: string }>
+  }
+  tts?: {
+    provider: string
+    server_side: boolean
+    note: string
   }
   video: { mode: string }
   integrations: {

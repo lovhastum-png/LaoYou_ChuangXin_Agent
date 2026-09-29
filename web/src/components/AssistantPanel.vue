@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { Check, LoaderCircle, MessageCircleHeart, Mic, MicOff, Send, Volume2, X } from 'lucide-vue-next'
 import { ApiError, api } from '../lib/api'
 import { assistantActionLabel } from '../lib/format'
+import { speakReply, type SpeakHandle } from '../lib/speech'
 import type { AssistantResponse } from '../types'
 
 interface RecognitionResultEvent {
@@ -54,6 +55,8 @@ let audioStream: MediaStream | null = null
 let disposed = false
 let audioChunks: Float32Array[] = []
 let recordingTimer: number | undefined
+/** 当前播报句柄；服务端合成有网络往返，必须能中断，否则关面板后声音会突然响起。 */
+let speech: SpeakHandle | null = null
 
 const canUseSpeech = computed(() => {
   const speechWindow = window as unknown as { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor }
@@ -61,6 +64,10 @@ const canUseSpeech = computed(() => {
 })
 
 const needsServerDialect = computed(() => ['yue-HK', 'sichuan', 'northeast'].includes(props.dialect || ''))
+// 服务端做方言归一化时，把规范化后的句子显式告诉用户，
+// 否则老人看不出系统是否听懂——只说方言的句子和收到的回复对不上。
+const recognizedText = ref('')
+const normalizesDialect = ref(false)
 const proposalSummary = computed(() => {
   const response = lastResponse.value
   if (!response?.proposal) return ''
@@ -73,15 +80,19 @@ const proposalSummary = computed(() => {
 })
 
 function say(reply: string) {
-  if (!props.voiceEnabled || !('speechSynthesis' in window)) return
-  window.speechSynthesis.cancel()
-  const utterance = new SpeechSynthesisUtterance(reply)
-  utterance.lang = props.dialect === 'yue-HK' ? 'zh-HK' : 'zh-CN'
-  utterance.rate = 0.92
-  utterance.onstart = () => { speaking.value = true }
-  utterance.onend = () => { speaking.value = false }
-  utterance.onerror = () => { speaking.value = false }
-  window.speechSynthesis.speak(utterance)
+  if (!props.voiceEnabled || !reply.trim()) return
+  // 换用服务端方言音色：浏览器 speechSynthesis 在绝大多数设备上没有东北话/粤语音色，
+  // 只能拿普通话念方言文本，听着就是"不像"。服务端不可用时 speakReply 内部自动降级。
+  speech?.stop()
+  speech = speakReply({
+    elderId: props.elderId,
+    text: reply,
+    dialect: props.dialect,
+    onStart: () => { speaking.value = true },
+    onEnd: () => { speaking.value = false },
+    // 播报失败不打断对话：屏幕上已经有文字，这里只清掉"正在播报"状态。
+    onError: () => { speaking.value = false },
+  })
 }
 
 async function sendMessage(value = text.value) {
@@ -192,6 +203,8 @@ async function stopDialectRecording() {
       error.value = '方言服务没有识别到文字，请再说一次或改用文字入口。'
       return
     }
+    recognizedText.value = response.text
+    normalizesDialect.value = response.normalized === true
     busy.value = false
     await sendMessage(response.text)
   } catch (cause) {
@@ -306,7 +319,8 @@ function startListening() {
 }
 
 function stopSpeaking() {
-  window.speechSynthesis?.cancel()
+  speech?.stop()
+  speech = null
   speaking.value = false
 }
 
@@ -323,7 +337,9 @@ onBeforeUnmount(() => {
   recording.value = false
   cleanupRecording()
   audioChunks = []
-  if (speaking.value) window.speechSynthesis?.cancel()
+  // 面板关闭时立刻中断播报：服务端合成的音频可能刚到达，不中断会在面板外继续响。
+  speech?.stop()
+  speech = null
 })
 </script>
 
@@ -367,6 +383,7 @@ onBeforeUnmount(() => {
     </div>
     <div class="assistant-tools">
       <span v-if="recording">方言录音 {{ recordingSeconds }}/30 秒，停止后发送识别</span>
+      <span v-else-if="recognizedText">{{ normalizesDialect ? '理解为：' : '识别为：' }}{{ recognizedText }}</span>
       <span v-else>{{ props.voiceEnabled ? (needsServerDialect && props.dialectAvailable ? '已配置方言识别' : '浏览器系统语音识别') : '语音已关闭，文字入口可用' }}</span>
       <button v-if="speaking" class="text-button on-dark-text" type="button" @click="stopSpeaking"><Volume2 :size="16" />停止播报</button>
     </div>
