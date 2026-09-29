@@ -31,7 +31,7 @@
   <h2>常用入口</h2>
   <p><code>停止老友.cmd</code> 会停止本包启动的 Web 和数据库并保留数据；<code>查看状态.cmd</code> 查看运行情况；<code>手机连接说明.cmd</code> 显示局域网地址并生成 TXT；<code>诊断老友.cmd</code> 查看日志。</p>
   <h2>手机访问</h2>
-  <p>从<a href="https://github.com/falling-feather/LaoYou_ChuangXin_Agent/releases/latest">发布页</a>下载并安装<code>laoyou-android.apk</code>。电脑和手机连接同一个Wi-Fi后，运行手机连接说明，把列出的<code>http://局域网地址:18080</code>填入APP“服务地址”。防火墙提示允许“专用网络”。</p>
+  <p>从<a href="https://github.com/lovhastum-png/LaoYou_ChuangXin_Agent/releases/latest">发布页</a>下载并安装<code>laoyou-android.apk</code>。电脑和手机连接同一个Wi-Fi后，运行手机连接说明，把列出的<code>http://局域网地址:18080</code>填入APP“服务地址”。防火墙提示允许“专用网络”。</p>
   <h2>配置与更新</h2>
   <p>默认 Web 端口是 <code>18080</code>，数据库端口是 <code>55433</code>。停止程序后编辑 <code>config/运行配置.json</code> 修改端口。更新时先停止旧包并确认 Web、数据库都已停止，在新包第一次启动前把旧包的 <code>data/</code> 和 <code>config/</code> 复制过去；新包若已启动过，请使用全新的解压目录迁移。不要复制 <code>state/</code>，也不要在数据库运行时复制 data。</p>
   <div class="tip">启动失败请运行“诊断老友.cmd”，查看 <code>logs/backend.stderr.log</code> 和 <code>logs/postgres.log</code>。不要删除或外传 <code>data/instance.json</code>。</div>
@@ -39,7 +39,7 @@
   <p>Windows 10/11 x64。包内已附带所需的Microsoft Visual C++运行库，无需安装开发工具或获取管理员权限。若提示缺少MSVCP140或VCRUNTIME140，请完整解压并检查安全软件是否隔离了文件。</p>
   <h2>许可</h2>
   <p>源码采用MIT协议；第三方许可和依赖版本清单位于<code>licenses/</code>。设备观测及机构通知为模拟接入，业务记录真实保存。</p>
-  <p>更多操作、分端源码和维护说明见<a href="https://github.com/falling-feather/LaoYou_ChuangXin_Agent">项目仓库</a>。</p>
+  <p>更多操作、分端源码和维护说明见<a href="https://github.com/lovhastum-png/LaoYou_ChuangXin_Agent">项目仓库</a>。</p>
 </main>
 </body>
 </html>

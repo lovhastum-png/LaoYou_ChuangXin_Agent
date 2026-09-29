@@ -10,9 +10,9 @@
 
 | 你要使用什么 | 下载 | 需要什么 |
 |---|---|---|
-| 电脑总控＋后端 | [Windows 便携包](https://github.com/falling-feather/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-windows-x64.zip) | Windows 10/11 x64，浏览器；包内自带Python及PostgreSQL |
-| 子女／社区手机端 | [安卓 APK](https://github.com/falling-feather/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-android.apk) | Android 8.0及以上，能访问已启动的电脑服务 |
-| 其他版本及校验值 | [Releases 下载页](https://github.com/falling-feather/LaoYou_ChuangXin_Agent/releases) | 可分别选择电脑包和APK |
+| 电脑总控＋后端 | [Windows 便携包](https://github.com/lovhastum-png/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-windows-x64.zip) | Windows 10/11 x64，浏览器；包内自带Python及PostgreSQL |
+| 子女／社区手机端 | [安卓 APK](https://github.com/lovhastum-png/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-android.apk) | Android 8.0及以上，能访问已启动的电脑服务 |
+| 其他版本及校验值 | [Releases 下载页](https://github.com/lovhastum-png/LaoYou_ChuangXin_Agent/releases) | 可分别选择电脑包和APK |
 
 ### 电脑端：解压后启动
 
@@ -46,15 +46,15 @@
 
 | 要开发的部分 | 目录 | 技术 |
 |---|---|---|
-| 适老化总控／家属网页 | [web](web) · [仅下载Web源码](https://github.com/falling-feather/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-web-source.zip) | Vue 3、TypeScript、Vite |
-| 智能指令、规则、用户和数据服务 | [backend](backend) · [仅下载后端源码](https://github.com/falling-feather/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-backend-source.zip) | Python 3.11、FastAPI、PostgreSQL |
-| 子女／社区APP | [android](android) · [仅下载Android源码](https://github.com/falling-feather/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-android-source.zip) | Kotlin、Jetpack Compose，包含通话WebView |
+| 适老化总控／家属网页 | [web](web) · [仅下载Web源码](https://github.com/lovhastum-png/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-web-source.zip) | Vue 3、TypeScript、Vite |
+| 智能指令、规则、用户和数据服务 | [backend](backend) · [仅下载后端源码](https://github.com/lovhastum-png/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-backend-source.zip) | Python 3.11、FastAPI、PostgreSQL |
+| 子女／社区APP | [android](android) · [仅下载Android源码](https://github.com/lovhastum-png/LaoYou_ChuangXin_Agent/releases/latest/download/laoyou-android-source.zip) | Kotlin、Jetpack Compose，包含通话WebView |
 | Windows封包和启动器 | [packaging](packaging) | 包内运行环境、初始化和进程管理 |
 
 下载源码使用仓库的 **Code → Download ZIP**，或：
 
 ```bash
-git clone https://github.com/falling-feather/LaoYou_ChuangXin_Agent.git
+git clone https://github.com/lovhastum-png/LaoYou_ChuangXin_Agent.git
 ```
 
 普通用户下载上方Release中的包体；GitHub自动提供的“Source code”是源码，需要自行准备开发环境。
