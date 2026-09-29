@@ -4,6 +4,8 @@ import './styles.css'
 // 外观设置面板的样式单独成文件，因为 styles.css 是由
 // tmp/apply_theme_system.py 全量重新生成的产物，人工维护的样式混进去会被覆盖。
 import './styles/appearance.css'
+// 布局骨架 / 字体族 / 图形密度三档。同样单独成文件，理由同上。
+import './styles/layouts.css'
 import { bootstrapPrefs, watchSystemMode } from './lib/theme'
 
 // index.html 里的内联脚本已在首屏写好 data-* 与三个倍率（防闪）。

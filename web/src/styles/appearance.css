@@ -287,7 +287,108 @@
   border-radius: var(--radius-pill);
 }
 
-/* 页脚吸底。
+/* ── 新增三个维度的档位说明 ── */
+
+/* 档位下面那句「适合谁」，是这一整套设置能被非专业家属正确使用的关键。
+   用 --muted-strong 而不是 --muted：它坐在 .appearance-section 的
+   --surface 底上，这一对是校验过的（--muted 在三档面上都达标，
+   但这里信息更重要，用更深的那个更稳妥）。 */
+.appearance-hint {
+  margin-top: var(--sp-12);
+  padding: var(--sp-12) var(--sp-14);
+  color: var(--muted-strong);
+  background: var(--surface-soft);
+  border-left: 4px solid var(--brand);
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+  line-height: var(--line-height-body, 1.5);
+}
+
+/* ── 布局缩略图：用三个小方块示意「东西放在哪」，不写文字 ──
+   布局是空间关系，画出来比描述准确得多。 */
+.layout-sample {
+  display: grid;
+  gap: 3px;
+  width: 46px;
+  height: 34px;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.layout-sample i {
+  display: block;
+  background: var(--brand);
+  /* 用 --radius-2xs（= radius-scale * 2px）而不是写死 2px：
+     这个小方块是布局示意图的一部分，圆角档位变化时它也该跟着变，
+     否则用户在"圆润"档看到的示意仍是没有圆角的，示意就不诚实了。 */
+  border-radius: var(--radius-2xs);
+  opacity: 0.55;
+}
+
+/* 标准：上二下一（下方两块等分） */
+.layout-sample-standard i:first-child { grid-column: span 2; }
+
+/* 左手优先：把最宽的那块放到左下 —— 即操作区在左侧 */
+.layout-sample-lefty {
+  grid-template-columns: 1.6fr 1fr;
+}
+.layout-sample-lefty i:first-child {
+  grid-row: span 2;
+}
+.layout-sample-lefty i:nth-child(2),
+.layout-sample-lefty i:nth-child(3) {
+  opacity: 0.35;
+}
+
+/* 图形优先：三块竖排，最上面那块最大（图标当主体） */
+.layout-sample-pictogram {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1.7fr 1fr 1fr;
+}
+.layout-sample-pictogram i:first-child { opacity: 0.8; }
+
+/* ── 字体样张 ──
+   同一个「永」字（笔画最全，横竖撇捺点折钩都有），
+   按各档的字体族渲染，肉眼直接比区别度。 */
+.font-family-sample {
+  font-size: 1.6rem;
+  line-height: 1.1;
+}
+
+.ff-system {
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+}
+
+.ff-readable {
+  font-family: 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+}
+
+.ff-humanist {
+  font-family: 'Source Han Serif SC', 'Noto Serif CJK SC', 'Songti SC', 'SimSun', serif;
+  font-weight: 500;
+}
+
+/* ── 装饰图案样张 ──
+   直接复用 layouts.css 里那套 radial-gradient 点阵，
+   做到「面板里看到什么，卡片上就是什么」。 */
+.motif-sample {
+  width: 40px;
+  height: 28px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.motif-calm {
+  background: var(--surface);
+}
+
+.motif-rich {
+  background-color: var(--surface);
+  background-image: radial-gradient(circle, var(--brand) 1.8px, transparent 2px);
+  background-size: 9px 9px;
+}
+
+/* ── 页脚吸底。
    这块面板在高字号 + 宽松密度下会超出 .modal-card 的 max-height（100vh - 44px）
    而需要滚动，若不吸底，「完成」按钮就在首屏之外 —— 对适老场景不合适。
    负外边距把页脚横向铺满、下沿顶到卡片内边距之外，才能盖住滚上来的内容；

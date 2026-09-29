@@ -58,6 +58,40 @@ export const MODES = [
   { id: 'auto', label: '跟随系统' },
 ] as const
 
+// ══════════════════════════════════════════════════════════════════════
+// 布局 / 字体族 / 图形密度 —— 与配色、字号档位正交的三个维度
+//
+// 为什么这三项要单列、而不是塞进「主题」里一起打包？
+//   因为它们解决的问题彼此无关：
+//   · 左撇子要的是**操作手序**上的镜像，字号多大都改变不了这件事；
+//   · 不识字的老人要的是**图标优先、弱化正文**，这是信息编码方式的问题，
+//     不是把字放大就能解决的（字放大到极限，不识字仍然不识字）；
+//   · 认知症老人可能被过多装饰图案干扰，所以「图形密度」必须能单独关掉，
+//     不能被「选了个卡通主题」连带锁死。
+//   做成独立维度后，家属可以按老人的实际情况逐项试，而不是被迫接受一整包。
+// ══════════════════════════════════════════════════════════════════════
+
+export const LAYOUTS = [
+  { id: 'standard', label: '标准', hint: '常用布局' },
+  { id: 'lefty', label: '左手优先', hint: '主要操作移到左侧' },
+  { id: 'pictogram', label: '图形优先', hint: '大图标，弱化长文' },
+] as const
+
+export const FONT_FAMILIES = [
+  { id: 'system', label: '系统默认', hint: '跟随本机' },
+  { id: 'readable', label: '黑体', hint: '笔画均匀，远处易认' },
+  { id: 'humanist', label: '人文衬线', hint: '字形有区别度' },
+] as const
+
+export const MOTIF_LEVELS = [
+  { id: 'calm', label: '简洁', hint: '不放装饰图案' },
+  { id: 'rich', label: '丰富', hint: '加卡通图案' },
+] as const
+
+export type LayoutId = (typeof LAYOUTS)[number]['id']
+export type FontFamilyId = (typeof FONT_FAMILIES)[number]['id']
+export type MotifId = (typeof MOTIF_LEVELS)[number]['id']
+
 export type FontTierId = (typeof FONT_TIERS)[number]['id']
 export type DensityId = (typeof DENSITIES)[number]['id']
 export type CornerId = (typeof CORNERS)[number]['id']
@@ -69,6 +103,12 @@ export interface ThemePrefs {
   font: FontTierId
   density: DensityId
   corner: CornerId
+  /** 布局骨架：标准 / 左手优先 / 图形优先 */
+  layout: LayoutId
+  /** 字体族：系统 / 黑体 / 人文衬线 */
+  fontFamily: FontFamilyId
+  /** 装饰图案密度：简洁 / 丰富 */
+  motif: MotifId
   /** 仅当 theme === CUSTOM_THEME 时生效 */
   customPrimary: string | null
 }
@@ -79,6 +119,9 @@ export const DEFAULT_PREFS: ThemePrefs = {
   font: 'standard',
   density: 'standard',
   corner: 'standard',
+  layout: 'standard',
+  fontFamily: 'system',
+  motif: 'calm',
   customPrimary: null,
 }
 
@@ -513,6 +556,10 @@ export function loadPrefs(): ThemePrefs {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return { ...DEFAULT_PREFS }
     const parsed = JSON.parse(raw) as Partial<ThemePrefs>
+    // 逐字段校验而不是整体信任：localStorage 里的值可能是旧版本写的
+    // （例如本次新增 layout/fontFamily/motif 之前的记录没有这三个键），
+    // 也可能是用户手改的。任何一项不合法就退回该项的默认值，
+    // 而不是整条记录作废 —— 否则用户只是版本升级就会丢掉全部外观设置。
     return {
       theme: typeof parsed.theme === 'string' ? parsed.theme : DEFAULT_PREFS.theme,
       mode: MODES.some((m) => m.id === parsed.mode) ? (parsed.mode as ModeChoice) : DEFAULT_PREFS.mode,
@@ -521,6 +568,15 @@ export function loadPrefs(): ThemePrefs {
         ? (parsed.density as DensityId)
         : DEFAULT_PREFS.density,
       corner: CORNERS.some((c) => c.id === parsed.corner) ? (parsed.corner as CornerId) : DEFAULT_PREFS.corner,
+      layout: LAYOUTS.some((l) => l.id === parsed.layout)
+        ? (parsed.layout as LayoutId)
+        : DEFAULT_PREFS.layout,
+      fontFamily: FONT_FAMILIES.some((f) => f.id === parsed.fontFamily)
+        ? (parsed.fontFamily as FontFamilyId)
+        : DEFAULT_PREFS.fontFamily,
+      motif: MOTIF_LEVELS.some((m) => m.id === parsed.motif)
+        ? (parsed.motif as MotifId)
+        : DEFAULT_PREFS.motif,
       customPrimary: /^#[0-9a-fA-F]{6}$/.test(String(parsed.customPrimary))
         ? String(parsed.customPrimary)
         : null,
@@ -573,6 +629,12 @@ export function applyPrefs(prefs: ThemePrefs) {
 
   el.dataset.theme = prefs.theme
   el.dataset.mode = mode
+  // 布局 / 字体族 / 图案密度都靠 data-* 命中静态 CSS。
+  // 做成属性而不是内联样式，是为了让样式表里能用后代选择器改结构（如左右镜像），
+  // 内联样式只能改单个元素的属性，改不了兄弟顺序与网格列。
+  el.dataset.layout = prefs.layout
+  el.dataset.fontFamily = prefs.fontFamily
+  el.dataset.motif = prefs.motif
 
   el.style.setProperty('--font-scale', String(fontScale(prefs.font)))
   el.style.setProperty('--density', String(densityScale(prefs.density)))

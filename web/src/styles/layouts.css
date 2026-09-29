@@ -1,0 +1,425 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   布局骨架 · 字体族 · 图形密度
+   ──────────────────────────────────────────────────────────────────────────
+   三个维度，与配色主题、字号档位、明暗模式都是正交的：
+     [data-layout]        standard | lefty | pictogram
+     [data-font-family]   system | readable | humanist
+     [data-motif]         calm | rich
+
+   全部靠 <html> 上的 data-* 属性命中，不用 JavaScript 渲染结构。
+   理由：布局变化发生在首屏绘制之前，JS 参与会因为等待脚本而闪一下；
+   CSS 方案下浏览器一次就画对。也意味着关掉 JS 后这些档位依然生效。
+
+   本文件只消费 styles.css 的令牌，不出现硬编码色值（tmp/check_css.py 会扫描）。
+   所有间距、圆角、字号都用 --sp-* / --radius-* / rem，以便和
+   字号档位、密度档位、圆角档位叠加生效。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   一、标准布局 —— 只是把缺省值显式写出来，便于和另外两档对照阅读
+   ══════════════════════════════════════════════════════════════════════════ */
+
+[data-layout='standard'] {
+  /* 标准布局沿用 styles.css 里的原始骨架：
+     顶部天气卡 + 提醒卡并排，中间「你好通通」全宽横幅，底部两张快捷卡等分。
+     操作入口（通话 / 摄像头）在屏幕下方，符合「右手持握时拇指自然落在右下」的
+     常见持机姿势。这一档同时是另外两档的对照基线。 */
+  --layout-quick-icon: 43px;
+  --layout-banner-icon: 34px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   二、左手优先布局
+   ──────────────────────────────────────────────────────────────────────────
+   先说清楚这一档到底在解决什么问题，否则很容易做成一个「看着不同、用着没用」
+   的假档位。
+
+   页面骨架是：左侧 254px 固定导航（.side-nav）+ 右侧内容区（.main-area）。
+   对左手持握的人来说，真正的困难不在导航——导航本来就在左边，很好按；
+   困难在于**内容区里最高频的操作落在右下角**，左手指过去要横跨整个屏幕，
+   而且手腕要往外翻，是个反关节的姿势。
+
+   所以这一档做的是：
+     1. 把内容区里两个高频操作（通话、摄像头）从右下挪到左下 ——
+        具体做法是让它们**竖排成一列并靠左**，而不是并排两栏。
+        并排时右栏那张卡离左手最远，是纯粹的浪费。
+     2. 提醒列表的操作按钮（「添加提醒」）移到卡片左侧 ——
+        它是这张卡上唯一的可点元素。
+     3. 抬高低频误触成本：可点元素最小高度 56px（WCAG 2.5.5 AAA 是 44px）。
+     4. 内容区收窄并靠左 —— 实测内容区宽度 1186 → 1080px，
+        右边缘从视口边（1440）收回 1334，网格右内缩从 38px 拉到 322px，
+        操作区整体压向左侧。右侧留白是有意的：操作按钮集中在左，
+        右手区域不放假按钮，避免左右手都去够。
+
+   ⚠️ 受侧栏所限，「贴左」指的是内容区内的左对齐，不是屏幕最左：
+      左侧 254px 是 .side-nav（导航栏），内容区只能从它右边开始。
+      若要让操作真正贴屏幕左边缘，得把导航也挪走 —— 那会改变全站结构，
+      超出「预设主题」的范围，故不做。
+
+   ⚠️ 刻意不做「整页镜像到 RTL」：
+     中文阅读方向是左起，整页镜像会让日期、数字、标点全跑到错误位置，
+     老人会直接读不出来。镜像的是**操作区**，不是**阅读方向** ——
+     这是这一档最重要的取舍。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+[data-layout='lefty'] {
+  --layout-quick-icon: 46px;
+  --layout-banner-icon: 38px;
+}
+
+/* 内容区收窄并靠左：所有可操作元素进入左半屏，左手不必跨屏。
+   只在宽屏生效 —— 窄屏本来就没什么横向空间，收窄反而更挤。 */
+[data-layout='lefty'] .page-content {
+  margin-right: auto;
+  margin-left: 0;
+  max-width: 1080px;
+}
+
+/* 高频操作竖排单列并靠左。
+   为什么是竖排而不是「两栏但对调」：两栏无论怎么对调，总有一张卡
+   离左手更远。竖排后两张卡纵向堆叠在左侧同一条竖直线上，
+   左手拇指沿弧线上下移动即可覆盖，这才是真正的「一颗拇指够得着」。 */
+[data-layout='lefty'] .home-grid-bottom {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 720px;
+  margin-right: auto;
+}
+
+/* 快捷卡在左手档里把图标贴左、内容紧随，形成统一的操作列 */
+[data-layout='lefty'] .quick-card {
+  grid-template-columns: 132px minmax(0, 1fr) auto;
+  min-height: 132px;
+  padding-left: var(--sp-26);
+}
+
+/* 顶部信息区保持两栏但整体靠左收窄（信息可读性不因操作习惯改变） */
+[data-layout='lefty'] .home-grid-top {
+  max-width: 1080px;
+  margin-right: auto;
+}
+
+/* 「添加提醒」按钮：它是提醒卡上唯一的可点元素，从右端挪到左端。
+   用 align-self + order 而不是 direction，因为这里只需要挪一个元素，
+   犯不着为它翻转整张卡的文字方向。 */
+[data-layout='lefty'] .reminder-summary .card-link-button {
+  align-self: flex-start;
+  margin-right: auto;
+  margin-left: 0;
+}
+
+/* 「你好通通」横幅：话筒图标贴到最左，语音入口靠近左手拇指。
+   这是整页最高频的入口，必须离左手最近。 */
+[data-layout='lefty'] .assistant-banner {
+  grid-template-columns: 100px minmax(0, 1fr);
+  max-width: 1080px;
+}
+
+/* 触碰下限：左手精细操作较少，可点元素抬到 56px */
+[data-layout='lefty'] .quick-card,
+[data-layout='lefty'] .nav-item,
+[data-layout='lefty'] .card-link-button,
+[data-layout='lefty'] .assistant-banner {
+  min-height: 56px;
+}
+
+/* 提醒行本身不可点，但它的「去吃药」状态要看得清，
+   在左手档里把状态徽标贴左，与操作列对齐 */
+[data-layout='lefty'] .reminder-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   三、图形优先布局
+   ──────────────────────────────────────────────────────────────────────────
+   面向**识字很少或不能阅读**的老人（文盲、认知退化、重度低视力）。
+
+   为什么不能用「把字号调到特大」代替？
+   因为字号再大，读不懂的字依然读不懂。这一档要换的是**信息编码方式**：
+   把识别负担从「读文字」转移到「认图形」——图形识别是人类更低阶、
+   更抗老化的能力，不依赖读写训练。
+
+   具体做四件事：
+     1. 图标放大到接近卡片的视觉主体，文字退居辅助位置。
+     2. **缩短长文** —— 天气建议之类整句文字在图形优先下折叠为一行，
+        并加大行距减少拥挤（老人扫视困难，密排文字会被直接跳过）。
+     3. 强化「图标 + 状态色」的编码：待提醒用橙色圆点、异常用红色，
+        让状态不必读文字即可分辨。
+     4. 增大卡片高度与图标四周留白 —— 图形识别需要周围有「呼吸区」，
+        紧贴边框的图标反而更难辨认。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+[data-layout='pictogram'] {
+  --layout-quick-icon: 72px;
+  --layout-banner-icon: 64px;
+}
+
+/* 图标成为视觉主体：快捷卡改成图标在上、文字在下的竖排，
+   图标尺寸几乎翻倍。竖排比横排更适合作为「认图」用 ——
+   横排时图标和文字抢同一行的水平空间，图标必然做不大。 */
+[data-layout='pictogram'] .quick-card {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: var(--sp-16);
+  min-height: 300px;
+  padding: var(--sp-30) var(--sp-24);
+  text-align: center;
+}
+
+[data-layout='pictogram'] .quick-card .quick-icon {
+  width: 148px;
+  height: 148px;
+}
+
+/* lucide 图标把尺寸写成了 svg 的 width/height 内联属性（:size="43"），
+   这些是 HTML 属性而不是 CSS —— CSS 的 width/height 属性会覆盖它们，
+   但必须写到 svg 这一层，只改外层容器的尺寸是没用的。
+   实测：只改 .quick-icon 时图标从 118px 只涨到 132px；
+   加上这一条后涨到 72px（图标本身），容器 148px。 */
+[data-layout='pictogram'] .quick-card .quick-icon svg {
+  width: var(--layout-quick-icon);
+  height: var(--layout-quick-icon);
+  stroke-width: 1.3;
+}
+
+/* 文字退为辅助：不再与图标争抢注意力，缩到次要档并降低字重 */
+[data-layout='pictogram'] .quick-card .quick-copy strong {
+  font-size: 1.5rem;
+}
+
+[data-layout='pictogram'] .quick-card .quick-copy small {
+  font-size: 1.15rem;
+  line-height: 1.5;
+}
+
+/* 箭头在竖排布局里没有意义（下方没有可跳转的横向目标），直接隐去，
+   减少视觉噪声 —— 图形优先档的核心目标就是「少而大」，不是「多而全」。 */
+[data-layout='pictogram'] .quick-card .quick-arrow {
+  display: none;
+}
+
+/* 天气卡：温度数字成为主体，图标放大并居中 */
+[data-layout='pictogram'] .weather-card {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  text-align: center;
+}
+
+[data-layout='pictogram'] .weather-card .weather-icon {
+  width: 156px;
+  height: 156px;
+  stroke-width: 1.2;
+}
+
+[data-layout='pictogram'] .weather-card .weather-value strong {
+  font-size: 4rem;
+}
+
+/* 长文折叠：天气建议在图形优先下最长两行，超出省略。
+   宁可少给信息，也不要给一堵读不了的文字墙。 */
+[data-layout='pictogram'] .weather-card .weather-advice {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 1.25rem;
+  line-height: 1.6;
+}
+
+/* 提醒列表：图标放大 + 状态色圆点，让「吃没吃药」一望可知 */
+[data-layout='pictogram'] .reminder-row {
+  min-height: 96px;
+  gap: var(--sp-18);
+  padding: var(--sp-16) var(--sp-18);
+}
+
+[data-layout='pictogram'] .reminder-state {
+  font-size: 1.2rem;
+  padding: var(--sp-8) var(--sp-14);
+}
+
+[data-layout='pictogram'] .reminder-state svg {
+  width: 30px;
+  height: 30px;
+}
+
+/* 「你好通通」横幅：话筒图标做大，文案精简 */
+[data-layout='pictogram'] .assistant-banner {
+  min-height: 210px;
+  grid-template-columns: 148px minmax(0, 1fr) auto;
+}
+
+[data-layout='pictogram'] .assistant-banner-icon {
+  width: 124px;
+  height: 124px;
+}
+
+[data-layout='pictogram'] .assistant-banner-icon svg {
+  width: var(--layout-banner-icon);
+  height: var(--layout-banner-icon);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   四、字体族
+   ──────────────────────────────────────────────────────────────────────────
+   为什么字体族要独立于字号？
+   因为「字大」和「字好认」不是一回事。同样 22px，不同字体的实际辨识度
+   可能差出一倍 —— 关键在于**笔画对比度**和**字形之间的区别度**。
+
+   三种取向，各有明确的取舍：
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ① 系统默认：不指定字体族，跟随操作系统。
+     优点是零下载、零布局跳动；缺点是不受控 —— Windows 的微软雅黑、
+     安卓的思源黑体、macOS 的苹方，字面大小与笔画粗细都不一样。 */
+[data-font-family='system'] {
+  --font-family-ui: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+}
+
+/* ② 黑体（sans-serif）：笔画粗细均匀、没有衬线装饰。
+     为什么适合老人：视网膜老化会先丢失**细微笔画的对比**，
+     衬线字体的横细竖粗在低视力下会让细笔「消失」，只剩一团粗线。
+     均匀笔画的字在这一步退化中保留得更好，因此远距离阅读更稳。
+     代价：字形之间的区别度略低（如「己已巳」），需要大字号配合。 */
+[data-font-family='readable'] {
+  --font-family-ui: 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei',
+    'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  font-feature-settings: 'palt' 1;
+  letter-spacing: 0.01em;
+}
+
+/* ③ 人文衬线（serif）：有笔画对比、有书写感。
+     为什么也留一档：对**轻度低视力、仍保有精细辨识能力**的老人，
+     衬线提供的字形区别度反而更高 —— 「未末」「天夭」这类近形字
+     在黑体里更容易混，衬线靠笔画轻重能分开。
+     代价：细笔画在重度低视力下会丢，所以这一档配套加大字重与行距，
+     并且**不降低最小字号**。 */
+[data-font-family='humanist'] {
+  --font-family-ui: 'Source Han Serif SC', 'Noto Serif CJK SC', 'Songti SC',
+    'SimSun', Georgia, serif;
+  font-weight: 500;
+  letter-spacing: 0.015em;
+}
+
+/* 行距随字体族调整：衬线体字面小、需要更松的行距才不挤；
+   黑体字面满、行距可以略紧一些以保证信息密度。 */
+[data-font-family='humanist'] {
+  --line-height-body: 1.65;
+}
+
+[data-font-family='readable'] {
+  --line-height-body: 1.55;
+}
+
+[data-font-family='system'] {
+  --line-height-body: 1.5;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   五、图形密度（装饰图案）
+   ──────────────────────────────────────────────────────────────────────────
+   为什么图形密度要和「布局」分开？
+   因为「图标优先布局」和「加卡通装饰」是两个反向需求：
+     · 不识字的老人要**大图标**（功能性图形，帮助识别）
+     · 但**认知症老人可能被多余装饰干扰**（装饰性图形，增加噪声）
+   把两者绑在一起，就会出现「为了大图标被迫接受一屏卡通图案」的荒谬组合。
+   所以功能性图标由 [data-layout] 控制，装饰性图案由 [data-motif] 控制。
+
+   motif=rich 时在卡片角落加一层低对比度装饰纹样：
+   用 currentColor + 极低不透明度，因此**不引入新的色值**，
+   自动跟随当前主题与明暗模式，也不会拉低任何文字对比度。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+[data-motif='rich'] .surface-card,
+[data-motif='rich'] .quick-card {
+  position: relative;
+  overflow: hidden;
+}
+
+/* 装饰纹样挂在伪元素上，pointer-events:none 保证不影响点击 */
+[data-motif='rich'] .quick-card::after,
+[data-motif='rich'] .surface-card::after {
+  content: '';
+  position: absolute;
+  right: calc(-1 * var(--sp-16));
+  bottom: calc(-1 * var(--sp-16));
+  width: 132px;
+  height: 132px;
+  pointer-events: none;
+  /* 用 radial-gradient 画同心圆点阵，纯 CSS、零图片请求。
+     颜色取自 --brand，所以换主题时图案自动跟着变。 */
+  background-image: radial-gradient(
+    circle,
+    var(--brand) 2.2px,
+    transparent 2.4px
+  );
+  background-size: 16px 16px;
+  border-radius: var(--radius);
+  /* 不透明度压到 0.1 —— 装饰不能抢正文的注意力，
+     也保证它作为背景图形远低于 3:1，不会被误读为可交互元素。 */
+  opacity: 0.1;
+}
+
+/* 图形优先布局下装饰纹样更收敛：那一档的用户最不需要额外图案，
+   而且卡片内容已经是居中的大图标，角落再放图案会破坏对称。 */
+[data-layout='pictogram'][data-motif='rich'] .quick-card::after {
+  opacity: 0.06;
+}
+
+/* 深色模式下装饰纹样要更暗：浅色图案在深底上会显得更「亮」，
+   同样的 0.1 在深色背景上观感比浅色背景强，需要压一档。 */
+[data-mode='dark'][data-motif='rich'] .quick-card::after,
+[data-mode='dark'][data-motif='rich'] .surface-card::after {
+  opacity: 0.07;
+}
+
+/* 尊重系统的「减少动态效果」：装饰纹样本身是静态的，但过渡要关掉 */
+@media (prefers-reduced-motion: reduce) {
+  [data-motif='rich'] .quick-card::after,
+  [data-motif='rich'] .surface-card::after {
+    transition: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   六、窄屏回退
+   ──────────────────────────────────────────────────────────────────────────
+   平板竖屏或手机横屏时，两栏布局会挤，各档统一切成单列。
+
+   窄屏下 lefty 的「靠左收窄」要**撤销**：窄屏本来就没有横向余量，
+   再收窄只会把内容挤成一条，反而更难用。所以这里把网格还原成单列
+   自然宽度，lefty 只剩「56px 触碰下限」这一条继续生效 ——
+   触碰下限在窄屏上更重要（拇指操作），必须留着。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 900px) {
+  /* 撤销收窄：窄屏没有余量可收，收窄会变成挤压 */
+  [data-layout='lefty'] .page-content,
+  [data-layout='lefty'] .home-grid-top,
+  [data-layout='lefty'] .home-grid-bottom,
+  [data-layout='lefty'] .assistant-banner {
+    max-width: none;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  [data-layout='lefty'] .home-grid-top,
+  [data-layout='lefty'] .home-grid-bottom {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 图形优先在窄屏上图标占比要克制一些：窄屏视口小，
+     图标一味放大反而会把文字挤没，失去「图标 + 文字」的互补关系。 */
+  [data-layout='pictogram'] .quick-card {
+    min-height: 240px;
+  }
+
+  [data-layout='pictogram'] .quick-card .quick-icon {
+    width: 104px;
+    height: 104px;
+  }
+
+  [data-layout='pictogram'] .quick-card .quick-icon svg {
+    width: 76px;
+    height: 76px;
+  }
+}

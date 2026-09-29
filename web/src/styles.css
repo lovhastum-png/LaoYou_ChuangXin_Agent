@@ -27,12 +27,16 @@
      --density     密度倍率（0.85 / 1 / 1.15），只作用于间距（--sp-*），
                    不动字号，避免「调密度把字也调了」
      --radius-scale 圆角倍率（0.5 / 1 / 1.5），作用于 --radius-* 令牌
-     三个值都取默认时，与本文件改造前的渲染结果完全一致。 */
+     三个值都取默认时，与本文件改造前的渲染结果完全一致。
+
+     --font-family-ui 由 web/src/styles/layouts.css 按
+     [data-font-family='system'|'readable'|'humanist'] 覆写。
+     这里给出缺省值（系统默认档），使样式表在没有 data 属性时也能渲染。 */
   --font-scale: 1;
   --density: 1;
   --radius-scale: 1;
 
-  font-family: Inter, "Noto Sans SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-family-ui, system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif);
   font-size: calc(1em * var(--font-scale));
   font-synthesis: none;
   text-rendering: optimizeLegibility;

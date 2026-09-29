@@ -1,0 +1,334 @@
+{
+  "standard": {
+    "viewport": 1440,
+    "dataLayout": "standard",
+    "dataFontFamily": "system",
+    "dataMotif": "calm",
+    "rootFontFamily": "system-ui, -apple-system, \"Segoe UI\", \"Microsoft YaHei\", sans-serif",
+    "pageContent": {
+      "x": 254,
+      "y": 73,
+      "w": 1186,
+      "h": 1051
+    },
+    "homeGrid": {
+      "x": 292,
+      "y": 860,
+      "w": 1110,
+      "h": 226
+    },
+    "quickCard": {
+      "x": 292,
+      "y": 860,
+      "w": 547,
+      "h": 226
+    },
+    "quickIcon": {
+      "x": 327,
+      "y": 914,
+      "w": 118,
+      "h": 118
+    },
+    "quickSvg": {
+      "x": 365,
+      "y": 951,
+      "w": 43,
+      "h": 43
+    },
+    "bottomFirst": {
+      "x": 292,
+      "y": 860,
+      "w": 547,
+      "h": 226
+    },
+    "bottomSecond": {
+      "x": 855,
+      "y": 860,
+      "w": 547,
+      "h": 226
+    },
+    "bottomStacked": false,
+    "arrowDisplay": "block",
+    "quickMinHeight": "226px",
+    "motifBgImage": "none",
+    "motifWidth": "auto",
+    "motifOpacity": "1"
+  },
+  "lefty": {
+    "viewport": 1440,
+    "dataLayout": "lefty",
+    "dataFontFamily": "system",
+    "dataMotif": "calm",
+    "rootFontFamily": "system-ui, -apple-system, \"Segoe UI\", \"Microsoft YaHei\", sans-serif",
+    "pageContent": {
+      "x": 254,
+      "y": 73,
+      "w": 1080,
+      "h": 1252
+    },
+    "homeGrid": {
+      "x": 292,
+      "y": 919,
+      "w": 720,
+      "h": 368
+    },
+    "quickCard": {
+      "x": 292,
+      "y": 919,
+      "w": 720,
+      "h": 176
+    },
+    "quickIcon": {
+      "x": 319,
+      "y": 948,
+      "w": 118,
+      "h": 118
+    },
+    "quickSvg": {
+      "x": 357,
+      "y": 985,
+      "w": 43,
+      "h": 43
+    },
+    "bottomFirst": {
+      "x": 292,
+      "y": 919,
+      "w": 720,
+      "h": 176
+    },
+    "bottomSecond": {
+      "x": 292,
+      "y": 1111,
+      "w": 720,
+      "h": 176
+    },
+    "bottomStacked": true,
+    "arrowDisplay": "block",
+    "quickMinHeight": "56px",
+    "motifBgImage": "none",
+    "motifWidth": "auto",
+    "motifOpacity": "1"
+  },
+  "pictogram": {
+    "viewport": 1440,
+    "dataLayout": "pictogram",
+    "dataFontFamily": "system",
+    "dataMotif": "calm",
+    "rootFontFamily": "system-ui, -apple-system, \"Segoe UI\", \"Microsoft YaHei\", sans-serif",
+    "pageContent": {
+      "x": 254,
+      "y": 73,
+      "w": 1186,
+      "h": 1265
+    },
+    "homeGrid": {
+      "x": 292,
+      "y": 945,
+      "w": 1110,
+      "h": 355
+    },
+    "quickCard": {
+      "x": 292,
+      "y": 945,
+      "w": 547,
+      "h": 355
+    },
+    "quickIcon": {
+      "x": 492,
+      "y": 992,
+      "w": 148,
+      "h": 148
+    },
+    "quickSvg": {
+      "x": 530,
+      "y": 1030,
+      "w": 72,
+      "h": 72
+    },
+    "bottomFirst": {
+      "x": 292,
+      "y": 945,
+      "w": 547,
+      "h": 355
+    },
+    "bottomSecond": {
+      "x": 855,
+      "y": 945,
+      "w": 547,
+      "h": 355
+    },
+    "bottomStacked": false,
+    "arrowDisplay": "none",
+    "quickMinHeight": "300px",
+    "motifBgImage": "none",
+    "motifWidth": "auto",
+    "motifOpacity": "1"
+  },
+  "narrow": {
+    "standard": {
+      "viewport": 820,
+      "dataLayout": "standard",
+      "dataFontFamily": "system",
+      "dataMotif": "calm",
+      "rootFontFamily": "system-ui, -apple-system, \"Segoe UI\", \"Microsoft YaHei\", sans-serif",
+      "pageContent": {
+        "x": 0,
+        "y": 147,
+        "w": 820,
+        "h": 1507
+      },
+      "homeGrid": {
+        "x": 26,
+        "y": 1284,
+        "w": 768,
+        "h": 332
+      },
+      "quickCard": {
+        "x": 26,
+        "y": 1284,
+        "w": 768,
+        "h": 160
+      },
+      "quickIcon": {
+        "x": 51,
+        "y": 1316,
+        "w": 95,
+        "h": 95
+      },
+      "quickSvg": {
+        "x": 77,
+        "y": 1342,
+        "w": 43,
+        "h": 43
+      },
+      "bottomFirst": {
+        "x": 26,
+        "y": 1284,
+        "w": 768,
+        "h": 160
+      },
+      "bottomSecond": {
+        "x": 26,
+        "y": 1456,
+        "w": 768,
+        "h": 160
+      },
+      "bottomStacked": true,
+      "arrowDisplay": "block",
+      "quickMinHeight": "160px",
+      "motifBgImage": "none",
+      "motifWidth": "auto",
+      "motifOpacity": "1"
+    },
+    "lefty": {
+      "viewport": 820,
+      "dataLayout": "lefty",
+      "dataFontFamily": "system",
+      "dataMotif": "calm",
+      "rootFontFamily": "system-ui, -apple-system, \"Segoe UI\", \"Microsoft YaHei\", sans-serif",
+      "pageContent": {
+        "x": 0,
+        "y": 151,
+        "w": 820,
+        "h": 1536
+      },
+      "homeGrid": {
+        "x": 26,
+        "y": 1347,
+        "w": 768,
+        "h": 302
+      },
+      "quickCard": {
+        "x": 26,
+        "y": 1347,
+        "w": 768,
+        "h": 145
+      },
+      "quickIcon": {
+        "x": 53,
+        "y": 1372,
+        "w": 95,
+        "h": 95
+      },
+      "quickSvg": {
+        "x": 79,
+        "y": 1398,
+        "w": 43,
+        "h": 43
+      },
+      "bottomFirst": {
+        "x": 26,
+        "y": 1347,
+        "w": 768,
+        "h": 145
+      },
+      "bottomSecond": {
+        "x": 26,
+        "y": 1504,
+        "w": 768,
+        "h": 145
+      },
+      "bottomStacked": true,
+      "arrowDisplay": "block",
+      "quickMinHeight": "56px",
+      "motifBgImage": "none",
+      "motifWidth": "auto",
+      "motifOpacity": "1"
+    },
+    "pictogram": {
+      "viewport": 820,
+      "dataLayout": "pictogram",
+      "dataFontFamily": "system",
+      "dataMotif": "calm",
+      "rootFontFamily": "system-ui, -apple-system, \"Segoe UI\", \"Microsoft YaHei\", sans-serif",
+      "pageContent": {
+        "x": 0,
+        "y": 147,
+        "w": 820,
+        "h": 1881
+      },
+      "homeGrid": {
+        "x": 26,
+        "y": 1421,
+        "w": 768,
+        "h": 569
+      },
+      "quickCard": {
+        "x": 26,
+        "y": 1421,
+        "w": 768,
+        "h": 247
+      },
+      "quickIcon": {
+        "x": 358,
+        "y": 1452,
+        "w": 104,
+        "h": 104
+      },
+      "quickSvg": {
+        "x": 372,
+        "y": 1466,
+        "w": 76,
+        "h": 76
+      },
+      "bottomFirst": {
+        "x": 26,
+        "y": 1421,
+        "w": 768,
+        "h": 247
+      },
+      "bottomSecond": {
+        "x": 26,
+        "y": 1679,
+        "w": 768,
+        "h": 311
+      },
+      "bottomStacked": true,
+      "arrowDisplay": "none",
+      "quickMinHeight": "240px",
+      "motifBgImage": "none",
+      "motifWidth": "auto",
+      "motifOpacity": "1"
+    }
+  }
+}

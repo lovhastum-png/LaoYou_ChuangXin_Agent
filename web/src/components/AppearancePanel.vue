@@ -14,8 +14,11 @@ import {
   CORNERS,
   CUSTOM_THEME,
   DENSITIES,
+  FONT_FAMILIES,
   FONT_TIERS,
+  LAYOUTS,
   MODES,
+  MOTIF_LEVELS,
   THEME_META,
   applyPrefs,
   cornerScale,
@@ -28,9 +31,12 @@ import {
   watchSystemMode,
   type CornerId,
   type DensityId,
+  type FontFamilyId,
   type FontTierId,
+  type LayoutId,
   type Mode,
   type ModeChoice,
+  type MotifId,
   type ThemePrefs,
 } from '../lib/theme'
 
@@ -111,6 +117,9 @@ function reset() {
     font: 'standard',
     density: 'standard',
     corner: 'standard',
+    layout: 'standard',
+    fontFamily: 'system',
+    motif: 'calm',
     customPrimary: null,
   }
   hexDraft.value = '#165198'
@@ -158,6 +167,46 @@ function fontSample(scale: number) {
 }
 const curDensity = computed(() => densityScale(prefs.value.density))
 const curCorner = computed(() => cornerScale(prefs.value.corner))
+
+/**
+ * 每一档下面那句说明。
+ *
+ * 为什么要在界面上解释，而不是只放个名字？
+ *   因为这三个维度的档位名（左手优先 / 图形优先 / 黑体）对家属来说
+ *   并不自明 —— 装机的往往不是使用者本人。把「适合谁」写出来，
+ *   家属才能对号入座，而不是靠猜。这也是这一整套设置存在的意义：
+ *   它必须能被非专业的人正确使用。
+ */
+const layoutHint = computed(() => {
+  switch (prefs.value.layout) {
+    case 'lefty':
+      return '适合习惯用左手操作的老人：通话、摄像头这些要点的入口都挪到左侧，拇指伸手就到；信息卡片仍按从左到右排，读起来不别扭。同时把可点区域的最小高度抬到 56px，减少误触。'
+    case 'pictogram':
+      return '适合识字很少、或看不进整句文字的老人家：图标放大成卡片主体，文字退到辅助位置，天气建议这类长句也会折叠成两行。认图比认字更省力，也更抗老化。'
+    default:
+      return '常用的排法：上面是天气和今天的提醒，中间是「你好通通」，下面的通话和摄像头左右各一个。'
+  }
+})
+
+const fontFamilyHint = computed(() => {
+  switch (prefs.value.fontFamily) {
+    case 'readable':
+      return '黑体笔画粗细均匀。老人视力下降时最先看不清的是很细的笔画，衬线字体的「横细竖粗」会让细的那一笔先糊掉，所以黑体在远处更稳。'
+    case 'humanist':
+      return '衬线字体靠笔画的轻重区分字形，「未／末」「天／夭」这类近形字更好分辨。适合还能看清细节的老人；如果视力已经比较差，选黑体更稳妥。'
+    default:
+      return '用本机自带的字体，不额外加载，页面打开最快。缺点是不同电脑上字的样子会略有差别。'
+  }
+})
+
+const motifHint = computed(() => {
+  switch (prefs.value.motif) {
+    case 'rich':
+      return '在卡片角落加一层淡淡的卡通纹样，界面看起来更活泼。纹样做得很浅，不会影响看字，也不会被误当成按钮。'
+    default:
+      return '不放任何装饰图案。如果老人容易被多余的花纹分散注意力，保持这一档。'
+  }
+})
 </script>
 
 <template>
@@ -365,6 +414,78 @@ const curCorner = computed(() => cornerScale(prefs.value.corner))
             <small>{{ item.label }}</small>
           </button>
         </div>
+      </div>
+
+      <!-- ── 布局方式 ──
+           这一档改的是「东西放在哪」，与字号、颜色都无关，所以单独成区。
+           每一档都写清适用人群，因为家属通常不知道自己家老人该选哪个。 -->
+      <div class="appearance-section">
+        <div class="appearance-section-head">
+          <h3>布局方式</h3>
+          <span>操作入口的位置会变，不影响配色</span>
+        </div>
+        <div class="segmented">
+          <button
+            v-for="item in LAYOUTS"
+            :key="item.id"
+            type="button"
+            :class="{ active: prefs.layout === item.id }"
+            :aria-pressed="prefs.layout === item.id"
+            @click="patch({ layout: item.id })"
+          >
+            <span class="layout-sample" :class="`layout-sample-${item.id}`" aria-hidden="true">
+              <i /><i /><i />
+            </span>
+            <small>{{ item.label }}</small>
+          </button>
+        </div>
+        <p class="appearance-hint">{{ layoutHint }}</p>
+      </div>
+
+      <!-- ── 字体 ── -->
+      <div class="appearance-section">
+        <div class="appearance-section-head">
+          <h3>字体</h3>
+          <span>字的「好不好认」，和「多大」是两件事</span>
+        </div>
+        <div class="segmented">
+          <button
+            v-for="item in FONT_FAMILIES"
+            :key="item.id"
+            type="button"
+            :class="{ active: prefs.fontFamily === item.id }"
+            :aria-pressed="prefs.fontFamily === item.id"
+            @click="patch({ fontFamily: item.id })"
+          >
+            <span class="font-family-sample" :class="`ff-${item.id}`">永</span>
+            <small>{{ item.label }}</small>
+          </button>
+        </div>
+        <p class="appearance-hint">{{ fontFamilyHint }}</p>
+      </div>
+
+      <!-- ── 装饰图案 ──
+           刻意与「布局」分开：需要大图标的老人未必需要装饰图案，
+           把两者绑在一起会逼人二选一。 -->
+      <div class="appearance-section">
+        <div class="appearance-section-head">
+          <h3>装饰图案</h3>
+          <span>卡片角落的卡通纹样，可单独关闭</span>
+        </div>
+        <div class="segmented">
+          <button
+            v-for="item in MOTIF_LEVELS"
+            :key="item.id"
+            type="button"
+            :class="{ active: prefs.motif === item.id }"
+            :aria-pressed="prefs.motif === item.id"
+            @click="patch({ motif: item.id })"
+          >
+            <span class="motif-sample" :class="`motif-${item.id}`" aria-hidden="true" />
+            <small>{{ item.label }}</small>
+          </button>
+        </div>
+        <p class="appearance-hint">{{ motifHint }}</p>
       </div>
 
       <div class="appearance-footer">

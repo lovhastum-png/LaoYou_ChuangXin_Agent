@@ -36,6 +36,18 @@
         el.style.setProperty('--font-scale', String(FONT[p && p.font] || 1))
         el.style.setProperty('--density', String(DENSITY[p && p.density] || 1))
         el.style.setProperty('--radius-scale', String(CORNER[p && p.corner] || 1))
+        /* 布局 / 字体族 / 图案密度同样是「首屏就得对」的维度：
+           布局类属性晚一帧写上去，页面会先按标准布局画一次再重排，
+           那次重排比换色闪烁更难接受（内容会跳位置）。
+           这三个属性没有对应的倍率，直接写 data-* 让 layouts.css 命中。
+           允许值在 src/lib/theme/index.ts 的 LAYOUTS/FONT_FAMILIES/MOTIF_LEVELS 里，
+           两侧改动需同步。 */
+        var LAYOUT = ['standard', 'lefty', 'pictogram']
+        var FONT_FAMILY = ['system', 'readable', 'humanist']
+        var MOTIF = ['calm', 'rich']
+        el.dataset.layout = LAYOUT.indexOf(p && p.layout) >= 0 ? p.layout : 'standard'
+        el.dataset.fontFamily = FONT_FAMILY.indexOf(p && p.fontFamily) >= 0 ? p.fontFamily : 'system'
+        el.dataset.motif = MOTIF.indexOf(p && p.motif) >= 0 ? p.motif : 'calm'
         /* 自定义主色没有静态 CSS 可选，令牌由 index.ts 在运行时求解。
            为避免首屏按默认主题画一帧再跳色，求解结果在保存时一并落盘，
            这里直接铺上去。没有这一段也不影响正确性，只会闪一下。 */
