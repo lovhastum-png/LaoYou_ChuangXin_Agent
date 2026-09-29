@@ -61,6 +61,11 @@ export function observationLabel(observation: Observation): string {
     immobility: '静止',
     away: '未归',
   }
+  // 摄像头看护上报的 activity 带 state 字段，属于「看护状态」而非运动量，
+  // 单独给它一个更好认的名字。
+  if (observation.kind === 'activity' && observation.value && typeof observation.value === 'object' && 'state' in observation.value) {
+    return '看护状态'
+  }
   return map[observation.kind] || observation.kind
 }
 
@@ -72,6 +77,12 @@ export function observationValue(observation: Observation): string {
   if (observation.value === null || observation.value === undefined || observation.value === '') {
     if (observation.duration_minutes !== null && observation.duration_minutes !== undefined) return `${observation.duration_minutes} 分钟`
     return '已记录'
+  }
+  // 看护状态观测：value 形如 { state, label, safe }，直接显示业务标签，
+  // 家属才看得懂「老人在画面内」，而不是一句「已记录」。
+  if (observation.kind === 'activity' && typeof observation.value === 'object' && observation.value !== null) {
+    const value = observation.value as { label?: string; still_seconds?: number; missing_seconds?: number }
+    if (typeof value.label === 'string' && value.label) return value.label
   }
   // 未知结构不把原始 JSON 显示给老人看（例如 {"foo":1}），改为业务化文案。
   if (typeof observation.value === 'object') return '已记录'

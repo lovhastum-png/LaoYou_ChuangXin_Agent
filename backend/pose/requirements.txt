@@ -1,0 +1,16 @@
+# 跌倒检测推理侧车依赖（独立于 backend/requirements.txt）
+#
+# 安装（必须用侧车自己的 venv，不要装进 backend/.venv）：
+#   python -m venv backend/pose/.venv
+#   backend/pose/.venv/Scripts/python.exe -m pip install -r backend/pose/requirements.txt
+#
+# 注意：本机清华镜像源不可用（返回空索引），必须走官方 PyPI：
+#   -i https://pypi.org/simple
+#
+# torch 装的是 CPU 版（约 200MB）。有 N 卡时改为对应的 CUDA 版本可显著提速。
+
+ultralytics>=8.3
+torch>=2.0
+opencv-python>=4.8
+numpy>=1.24
+requests>=2.31
