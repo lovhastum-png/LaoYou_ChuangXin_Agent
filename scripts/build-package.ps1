@@ -217,21 +217,44 @@ $manifest = [ordered]@{
 $manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stage '版本信息.json') -Encoding utf8
 
 $archive = Join-Path $OutputDir 'laoyou-windows-x64.zip'
+
+# 敏感文件校验必须发生在压缩之前：否则 zip 已经落到产物目录，throw 也收不回来。
+$forbidden = @(
+    'runtime/postgres-data',
+    'runtime/database-credentials.json',
+    'runtime/local.env',
+    'backend/.venv',
+    '.env'
+)
+foreach ($relative in $forbidden) {
+    $path = Join-Path $stage $relative
+    if (Test-Path -LiteralPath $path) { throw "交付包意外包含禁止文件：$path" }
+}
+
 if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive -Force }
 Write-Host '压缩交付包...'
 Compress-Archive -LiteralPath $stage -DestinationPath $archive -CompressionLevel Optimal
+
+# 压缩后再按 zip 内的条目名复核一遍，防止 staging 里有漏网之鱼。
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$suspicious = @()
+$zip = [System.IO.Compression.ZipFile]::OpenRead($archive)
+try {
+    $suspicious = @(
+        $zip.Entries |
+            Where-Object { $_.FullName -match '(?i)(^|/)(\.env|local\.env|database-credentials\.json)$|postgres-data/|\.keystore$' } |
+            ForEach-Object { $_.FullName }
+    )
+} finally {
+    $zip.Dispose()
+}
+if ($suspicious.Count -gt 0) {
+    Remove-Item -LiteralPath $archive -Force
+    throw "交付包包含疑似敏感条目，已删除产物：$($suspicious -join ', ')"
+}
+
 $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToUpperInvariant()
 Set-Content -LiteralPath (Join-Path $OutputDir 'laoyou-windows-x64.sha256.txt') -Value "$hash  laoyou-windows-x64.zip" -Encoding ascii
-
-$forbidden = @(
-    (Join-Path $stage 'runtime/postgres-data'),
-    (Join-Path $stage 'runtime/database-credentials.json'),
-    (Join-Path $stage 'runtime/local.env'),
-    (Join-Path $stage 'backend/.venv')
-)
-foreach ($path in $forbidden) {
-    if (Test-Path -LiteralPath $path) { throw "交付包意外包含禁止文件：$path" }
-}
 
 Write-Host "完成：$archive"
 Write-Host "SHA-256：$hash"

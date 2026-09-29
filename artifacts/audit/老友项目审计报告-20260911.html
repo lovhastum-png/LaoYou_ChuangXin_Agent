@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>老友项目审计报告 · 2026-09-11</title>
+<style>
+  :root{
+    --bg:#f7f8f6; --card:#ffffff; --ink:#1c2320; --muted:#5f6b64; --line:#e3e7e2;
+    --p0:#b3261e; --p0soft:#fdecea; --p1:#b25407; --p1soft:#fff4e5; --p2:#27648a; --p2soft:#eaf3fa;
+    --ok:#2f6b46; --oksoft:#eaf5ee; --code:#f2f4f1;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;}
+  .wrap{max-width:960px;margin:0 auto;padding:40px 24px 80px}
+  header.top{border-bottom:3px solid var(--ink);padding-bottom:20px;margin-bottom:28px}
+  h1{margin:0 0 6px;font-size:27px;letter-spacing:-.4px}
+  .sub{color:var(--muted);font-size:14px}
+  h2{font-size:19px;margin:38px 0 14px;padding-left:11px;border-left:5px solid var(--ink)}
+  h3{font-size:16px;margin:22px 0 8px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0 6px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .stat b{display:block;font-size:26px;line-height:1.2}
+  .stat span{color:var(--muted);font-size:12.5px}
+  .stat.p0 b{color:var(--p0)} .stat.p1 b{color:var(--p1)}
+  .stat.p2 b{color:var(--p2)} .stat.ok b{color:var(--ok)}
+  .item{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:14px 0}
+  .item.hi{border-left:5px solid var(--p0)}
+  .item.mid{border-left:5px solid var(--p1)}
+  .item.low{border-left:5px solid var(--p2)}
+  .head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+  .head strong{font-size:16px}
+  .tag{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap}
+  .t-p0{background:var(--p0soft);color:var(--p0)} .t-p1{background:var(--p1soft);color:var(--p1)}
+  .t-p2{background:var(--p2soft);color:var(--p2)} .t-ok{background:var(--oksoft);color:var(--ok)}
+  .loc{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;color:var(--muted);
+    background:var(--code);border-radius:5px;padding:2px 7px}
+  .item p{margin:7px 0}
+  .item .fix{background:var(--oksoft);border-radius:7px;padding:9px 12px;margin-top:10px;font-size:14px}
+  .item .fix b{color:var(--ok)}
+  .item .ev{background:#f4f6f3;border-radius:7px;padding:9px 12px;margin-top:10px;font-size:13.5px;color:#3a463f}
+  code{font-family:ui-monospace,Consolas,monospace;font-size:13px;background:var(--code);padding:1px 5px;border-radius:4px}
+  pre{background:#1f2623;color:#e8ece9;padding:14px 16px;border-radius:9px;overflow-x:auto;font-size:12.5px;line-height:1.6}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px;background:var(--card);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#eef1ee;font-size:13px}
+  tr:last-child td{border-bottom:0}
+  .note{background:#fffbe8;border:1px solid #f0e3b0;border-radius:9px;padding:13px 16px;font-size:14px;margin:16px 0}
+  ul{margin:8px 0;padding-left:22px} li{margin:4px 0}
+  footer{margin-top:46px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>老友项目 · 优化点审计报告</h1>
+  <div class="sub">工作区：<code>D:\实验室项目\LaoYou_ChuangXin_Agent</code> ｜ 审计日期：2026-09-11 ｜ 基线提交：<code>369b9aa</code>（有 3 个未提交改动）</div>
+</header>
+
+<div class="note">
+  <strong>审计方式</strong>：三路并行只读审计（后端 FastAPI / 前端 Vue3 / 安卓+打包运维），
+  随后<strong>逐条回读源码复核</strong>，并对后端测试套件与数据库故障路径做了<strong>实际运行验证</strong>。
+  本报告只记录已核实的结论；子审计中发现的误报与夸大项已单列在最后一节，不计入问题数。
+  <br><br>
+  <strong>本次未修改任何文件</strong>，全部为"已核实、待你决定"。
+</div>
+
+<div class="stats">
+  <div class="stat p0"><b>2</b><span>P0 建议尽快处理</span></div>
+  <div class="stat p1"><b>6</b><span>P1 本轮应修</span></div>
+  <div class="stat p2"><b>14</b><span>P2 可排期优化</span></div>
+  <div class="stat ok"><b>2</b><span>需你拍板的决策项</span></div>
+</div>
+
+<h2>一、先说最要紧的两条</h2>
+
+<div class="item hi">
+  <div class="head">
+    <span class="tag t-p0">P0</span>
+    <strong>数据库连不上时，后端进程直接崩溃（不是返回 503）</strong>
+  </div>
+  <div class="loc">backend/app/db.py:48-54（<code>pool_pre_ping=True</code>）→ main.py:275-279 <code>/api/health</code></div>
+  <p>这是我实测复现出来的问题，纯静态审计发现不了。<code>create_engine(..., pool_pre_ping=True)</code> 在
+  <strong>目标数据库不可达</strong>时，不会抛出可捕获的异常，而是让 Python 进程<strong>原地死亡</strong>——
+  没有 traceback、没有日志、退出码 1。</p>
+  <div class="ev">
+    <b>对照实验（同一环境、同一连接串，只改引擎参数）</b>
+    <pre>无 pool_pre_ping   → 干净抛出 OperationalError，进程存活 ✅
+带 pool_pre_ping   → 进程静默死亡，无任何异常输出 ❌</pre>
+    该现象同时解释了另一个反常表现：<code>pytest</code> 跑到 <code>tests/test_static.py</code>
+    会<strong>静默中断</strong>（9 个用例通过后 exit=1、无任何报错文字），因为该测试会启动
+    TestClient → 触发 lifespan → 连接数据库。
+  </div>
+  <div class="fix">
+    <b>建议改法</b>：① <code>check_database()</code> 与引擎连接加上显式 <code>connect_timeout</code>
+    （实测加上 <code>connect_args={'connect_timeout':3}</code> 后行为恢复正常）；
+    ② 评估是否真的需要 <code>pool_pre_ping</code>，若保留则必须在真实环境下回归"DB 拉闸"这一幕；
+    ③ 把 <code>/api/health</code> 的 DB 故障路径做成明确的 503，而不是让 worker 挂掉——
+    低配服务器上多 worker 被打挂会直接影响可用性。
+  </div>
+</div>
+
+<div class="item hi">
+  <div class="head">
+    <span class="tag t-p0">P0</span>
+    <strong>演示口令 <code>Laoyou123!</code> 被硬编码并无条件播种为真实账号</strong>
+  </div>
+  <div class="loc">backend/app/db.py:106（<code>seed_demo_data</code>）← db.py:76-82 <code>init_db()</code> ← main.py:254 lifespan 每次启动调用</div>
+  <p>服务<strong>每次启动</strong>都会创建 <code>elder / child / community / admin</code> 四个账号，口令固定为
+  <code>Laoyou123!</code>，没有任何环境开关。任何能访问该服务的人用 <code>admin / Laoyou123!</code>
+  即可读取全部家庭的健康、作息、位置与摄像头快照。</p>
+  <p>同一口令还外溢到两处：</p>
+  <ul>
+    <li><code>web/src/pages/LoginPage.vue:20</code> 把它<strong>预填在输入框里</strong>，构建后任何人查看 JS 即可读到；</li>
+    <li><code>android/.../MainActivity.kt:569</code> 在 APP 登录页<strong>明文打印全部演示口令</strong>。</li>
+  </ul>
+  <div class="fix">
+    <b>建议改法</b>：① 播种加显式演示开关（如 <code>LAOYOU_DEMO=1</code>），非演示环境不建账号；
+    ② 口令移入环境变量，或首次启动生成随机口令打印到控制台；③ 前端去掉预填密码，安卓端仅
+    <code>BuildConfig.DEBUG</code> 时展示提示。这一条是当前最容易被真实利用的点。
+  </div>
+</div>
+
+<h2>二、P1：本轮应修</h2>
+
+<div class="item mid">
+  <div class="head">
+    <span class="tag t-p1">P1</span>
+    <strong>摄像头/麦克风采集在离开页面后仍在继续</strong>
+  </div>
+  <div class="loc">web/src/lib/useCameraSession.ts:6-17（模块级单例）｜ SafetyPage.vue:161-164 ｜ ElderHome.vue:145-148 ｜ App.vue:101 ｜ api.ts:80-102</div>
+  <p><code>useCameraSession</code> 的状态与定时器全部定义在<strong>模块作用域</strong>（非组件作用域）。核实结果：</p>
+  <ul>
+    <li><code>SafetyPage</code> 的 <code>onBeforeUnmount</code> 只做 <code>detachPreview()</code> + 释放 URL，<strong>没有调用 <code>camera.stop()</code></strong>；</li>
+    <li><code>ElderHome</code> 卸载只清自己的时钟/播报定时器；<code>App.vue</code> 卸载只摘 <code>popstate</code> 监听；</li>
+    <li>全项目 grep <code>visibilitychange / pagehide / beforeunload</code> → <strong>零命中</strong>。</li>
+  </ul>
+  <p>后果：在安全页点"启动本机预览"后切到其他页面，摄像头视频轨仍在，
+  <strong>每 30 秒上传一次快照、每 10 秒轮询一次设置</strong>会一直持续到手动停止或退出登录。</p>
+  <p class="sub" style="color:#5f6b64;font-size:13.5px">说明：跨页保活看起来是<em>有意设计</em>（<code>App.vue:61-63</code> 的
+  <code>resumeCameraId</code>、<code>attachPreview</code> 都在支持"切页回来预览还在"）。所以我不建议简单粗暴地卸载即停，
+  但"关标签/切到后台不停流"以及"在其他页面看不到任何采集中提示"是确定的缺口。</p>
+  <div class="fix">
+    <b>建议改法</b>：在 <code>useCameraSession</code> 内监听 <code>visibilitychange</code>/<code>pagehide</code>，
+    页面隐藏时暂停采集或 <code>stop()</code>；若确实要跨页保活，则加一个全局"正在采集中"的常驻指示与一键停止入口。
+  </div>
+</div>
+
+<div class="item mid">
+  <div class="head">
+    <span class="tag t-p1">P1</span>
+    <strong>请求层没有超时、没有 401 拦截</strong>
+  </div>
+  <div class="loc">web/src/lib/api.ts:80-102（<code>request()</code>）</div>
+  <p>核实：<code>fetch</code> 未传 <code>signal</code>、无 <code>AbortController</code>、无超时；
+  非 2xx 一律只抛 <code>ApiError</code>，<strong>没有针对 401 的清会话逻辑</strong>
+  （只有 <code>App.vue:91-98</code> 在启动时 <code>api.me()</code> 失败才清）。</p>
+  <p>两个直接后果：① TCP 被中间设备挂起时，各页面 <code>try/finally</code> 的 <code>finally</code> 永不执行，
+  老人端会<strong>永久停在"正在加载…"转圈</strong>且无法重试；② 会话过期（默认 7 天）后界面只报错不退回登录页。</p>
+  <div class="fix">
+    <b>建议改法</b>：在 <code>request()</code> 内加 <code>AbortSignal.timeout(ms)</code>，
+    并在 <code>status === 401</code> 时 <code>clearSession()</code> + 派发全局事件由 <code>App.vue</code> 回登录页
+    （注意排除 <code>/auth/login</code> 与通话页的临时 token 调用）。
+  </div>
+</div>
+
+<div class="item mid">
+  <div class="head">
+    <span class="tag t-p1">P1</span>
+    <strong>会话 token 被写进 URL</strong>
+  </div>
+  <div class="loc">web/src/App.vue:63（<code>pushState('/call/{id}?token=...')</code>）｜ api.ts:228-232（WS query 带 token）</div>
+  <p>进入通话时把 7 天有效的会话主 token 放进地址栏。<code>CallPage.vue:211</code> 虽然挂载后会
+  <code>replaceState</code> 清掉，但在此之前该 URL 已进入浏览器历史条目；期间任何子资源请求的
+  <code>Referer</code>、以及反向代理日志都可能带上它。WS 侧同样把 token 放在 query。</p>
+  <div class="fix">
+    <b>建议改法</b>：改用后端签发的<strong>一次性、短 TTL 通话票据</strong>（进入 WS 后立即消费），
+    不要复用长期会话 token；WS 可用子协议或首帧鉴权消息替代 query。
+  </div>
+</div>
+
+<div class="item mid">
+  <div class="head">
+    <span class="tag t-p1">P1</span>
+    <strong>打包脚本：敏感文件检查发生在压缩之后，防线形同虚设</strong>
+  </div>
+  <div class="loc">scripts/build-package.ps1:222（<code>Compress-Archive</code>） vs :226-234（<code>$forbidden</code> 检查）</div>
+  <p>已核实执行顺序：先 <code>Compress-Archive</code> 生成 <code>laoyou-windows-x64.zip</code>，
+  之后才检查 <code>runtime/local.env</code>、<code>runtime/database-credentials.json</code> 等禁止文件。
+  一旦命中，<code>throw</code> 只是报错，<strong>含凭据的 zip 已经落在产物目录里</strong>。</p>
+  <div class="fix">
+    <b>建议改法</b>：把禁止文件校验移到 <code>Compress-Archive</code> <strong>之前</strong>；
+    并在压缩后追加一次"读取 zip 条目名再扫一遍"的二次校验。
+  </div>
+</div>
+
+<div class="item mid">
+  <div class="head">
+    <span class="tag t-p1">P1</span>
+    <strong>安卓端全局放开明文 HTTP</strong>
+  </div>
+  <div class="loc">android/app/src/main/AndroidManifest.xml:15（<code>android:usesCleartextTraffic="true"</code>）</div>
+  <p>全局生效且无 <code>networkSecurityConfig</code> 收敛。APP 默认就是 <code>http://</code>
+  （<code>MainActivity.kt:552</code> 占位符），因此登录口令与后续 <code>Authorization: Bearer</code>
+  在局域网内是明文传输的。核实：安卓端权限申请本身规范（CAMERA/RECORD_AUDIO/POST_NOTIFICATIONS 均有
+  运行时申请），未多申请通讯录、位置等敏感权限。</p>
+  <div class="fix">
+    <b>建议改法</b>：新增 <code>network_security_config.xml</code>，<code>base-config</code> 关闭明文，
+    仅对可信内网网段放行；若验收阶段必须保留任意 IP，至少在登录页加显著中文提示，
+    并在接口契约中记录该已知风险。
+  </div>
+</div>
+
+<div class="item mid">
+  <div class="head">
+    <span class="tag t-p1">P1</span>
+    <strong>前端未构建，导致静态页测试必然失败</strong>
+  </div>
+  <div class="loc">web/dist 不存在（.gitignore:12 忽略）← backend/app/main.py:1205-1208 <code>if web_dist.is_dir()</code></div>
+  <p>核实：<code>web/dist</code> 目录当前不存在。后端只在 <code>web/dist</code> 存在时才挂载 SPA 路由，
+  而 <code>tests/test_static.py:9-16</code> 断言 <code>/reminders</code>、<code>/health</code> 等返回 200 index.html，
+  因此该测试在不先 <code>pnpm build</code> 的机器上必然失败（这也是 <code>pytest</code> 中断的直接原因）。</p>
+  <div class="fix">
+    <b>建议改法</b>：把该测试标记为 <code>skipif(not web_dist.exists())</code> 并在前置说明中要求先构建，
+    或让测试自建临时 index.html 后再断言路由回退逻辑。
+  </div>
+</div>
+
+<h2>三、P2：可排期优化</h2>
+
+<table>
+  <tr><th style="width:38%">问题</th><th style="width:30%">位置</th><th>说明与改法</th></tr>
+  <tr>
+    <td>未提交的 SQLite 预览改动偏离固定技术栈</td>
+    <td><code>backend/app/db.py</code>、<code>models.py</code>、<code>services.py</code>（<code>git diff</code>）</td>
+    <td>新增 <code>UTCDateTime</code>、<code>JSON().with_variant(JSONB)</code>、按方言跳过 advisory lock，
+    注释自称"本地 SQLite 快速预览临时引入"。但 AGENTS.md 固定栈是 PostgreSQL，<code>config.py:19-21</code>
+    还明确声明"故意不提供隐式 SQLite"。当前 <code>tmp/preview.db</code> 正在被使用（今天 18:43 仍在写），
+    说明改动是活的。需明确定去留：要么提交并在文档登记，要么回退，不要长期悬挂。</td>
+  </tr>
+  <tr>
+    <td>虚拟环境 Python 版本与项目约定不符</td>
+    <td><code>backend/.venv/pyvenv.cfg</code>（3.13.0）vs AGENTS.md（3.11）</td>
+    <td>venv 基于 <code>Python313</code> 创建，锁文件里是 <code>psycopg-binary==3.3.5</code>。
+    这很可能就是上面 P0 硬崩溃的环境诱因。建议按约定用 3.11 重建 venv 后复测，
+    可判定崩溃是"环境问题"还是"项目必须加固的路径"。</td>
+  </tr>
+  <tr>
+    <td>中文输入法回车会误发半成品消息</td>
+    <td><code>web/src/components/AssistantPanel.vue:346</code></td>
+    <td>全项目 grep <code>isComposing</code> 零命中。<code>@keydown.enter.prevent</code> 在拼音选词回车时也会触发，
+    直接清空输入并发送。改为在 handler 内先判 <code>e.isComposing || e.keyCode === 229</code> 再放行。</td>
+  </tr>
+  <tr>
+    <td>登录表单无重复提交保护</td>
+    <td><code>web/src/pages/LoginPage.vue:33-45</code></td>
+    <td><code>submit()</code> 内没有 <code>if (busy.value) return</code> 短路，按钮 <code>disabled</code>
+    拦不住表单回车提交。请求慢时连按回车会在服务端创建多个会话。加一行守卫即可。</td>
+  </tr>
+  <tr>
+    <td>助手创建提醒绕过了长度校验</td>
+    <td><code>main.py:840</code>（<code>Reminder(**proposal)</code>）+ <code>services.py:773-781</code></td>
+    <td>REST 路径走 <code>ReminderCreate</code> 校验，助手路径直接把解析结果塞进模型。
+    <code>medicine</code> 正则取自用户文本且无长度限制，而模型列是 <code>String(128)</code>，
+    超过即 PostgreSQL 报错 → 500（而不是 422）。落库前复用同一 schema 校验。</td>
+  </tr>
+  <tr>
+    <td>请求体先整体读入内存再判长度</td>
+    <td><code>main.py:961</code>、<code>main.py:1168</code></td>
+    <td><code>await request.body()</code> 把整个正文缓冲后才检查 960KB / 512KB 上限。
+    低配机器上超大正文可先撑爆内存。改为先校验 <code>Content-Length</code> 或流式读取超限即断，返回 413。</td>
+  </tr>
+  <tr>
+    <td>通话状态更新缺少行锁</td>
+    <td><code>main.py:1012-1019</code>、<code>main.py:1050-1081</code></td>
+    <td>写路径用 <code>db.get</code> 无锁读取，<code>answer</code> 与 <code>end</code> 并发时各自基于旧状态写入，
+    终态取决于提交顺序。写路径应加 <code>with_for_update()</code>。
+    （<code>mark_broadcast_played</code>（:494-503）与 <code>event_action</code> 同类，建议一并处理。）</td>
+  </tr>
+  <tr>
+    <td><code>FOR UPDATE</code> 作用域锁到了 join 的 elders 表</td>
+    <td><code>main.py:587</code>（配合 <code>_event_query_for_user</code> main.py:162 的 join）</td>
+    <td>PostgreSQL 中未指定 <code>OF</code> 的 <code>FOR UPDATE</code> 会锁住 FROM 里所有表。
+    改为 <code>.with_for_update(of=Event)</code>，避免与"先锁 elder"的流程互相等待。</td>
+  </tr>
+  <tr>
+    <td>WebSocket 无心跳、无空闲超时</td>
+    <td><code>main.py:1091-1140</code></td>
+    <td>半开连接会长期占用房间名额（每房间上限 2），且广播是逐个 <code>await</code> 顺序发送，
+    慢端会拖住另一端。建议加应用层 ping/pong 与接收超时。</td>
+  </tr>
+  <tr>
+    <td>轮询不感知页面可见性</td>
+    <td><code>IncomingCall.vue:17-30</code>、<code>BroadcastPlayer.vue:49-76</code></td>
+    <td>两者对 elder/child 角色始终挂载，每 5 秒打一轮 <code>elders + calls/broadcasts</code>，
+    页面隐藏时不停。单客户端 idle 约 48 请求/分钟。建议加 <code>visibilitychange</code> 降频/暂停，
+    或合并为一个后端聚合端点。<span style="color:#5f6b64">（已核实两者都有重入锁，不存在重试风暴。）</span></td>
+  </tr>
+  <tr>
+    <td>老人端可点区域偏小、橙色对比度不足</td>
+    <td><code>styles.css:264</code>（<code>.icon-button</code> 38×38）、<code>styles.css:17/144</code>（<code>--orange:#dc6908</code>）</td>
+    <td>已核实 38px 小于 44px 建议值，且用于老人端用药提醒页的启停/编辑/删除；
+    橙色在白色背景上对比度约 3.5:1，低于 WCAG AA 正文 4.5:1，而"待提醒"是老人端首页关键状态。</td>
+  </tr>
+  <tr>
+    <td>文档路径约定与实际工作区不符</td>
+    <td><code>AGENTS.md:3</code>、<code>doc/00-项目总纲.md:53</code>、<code>doc/01-开发者文档.md:460</code></td>
+    <td>三处硬编码 <code>D:/代码玩具测试/老友</code>，当前工作区是
+    <code>D:\实验室项目\LaoYou_ChuangXin_Agent</code>。脚本本身已用 <code>$PSScriptRoot</code> 可移植，
+    是文档误导。统一改为"工作区根目录"占位或实际路径。</td>
+  </tr>
+  <tr>
+    <td>14 张 QA 截图被提交进仓库</td>
+    <td><code>artifacts/qa/**</code>（<code>git ls-files</code> 已确认）</td>
+    <td><code>.gitignore:14-16</code> 只挡了 <code>artifacts/*.apk</code>、<code>*.zip</code>、<code>windows/</code>，
+    没挡 <code>artifacts/qa/</code>。合计约 1.6MB 二进制入库，会持续膨胀。加一行忽略即可。</td>
+  </tr>
+  <tr>
+    <td>接口契约与实现不一致、工程卫生</td>
+    <td><code>doc/01-子文档/11-接口契约.md:113</code>；<code>web/package-lock.json</code></td>
+    <td>契约写 <code>GET /health</code>，实现是 <code>/api/health</code>；契约未同步便携包端口 18080。
+    另外 <code>package-lock.json</code> 未跟踪且与 <code>pnpm-lock.yaml</code> 并存，
+    而 AGENTS 约定用 pnpm —— 双锁文件会让不同机器装出不同依赖树。</td>
+  </tr>
+</table>
+
+<h2>四、测试盲区（这不是"缺陷"，是风险敞口）</h2>
+<p>现有 13 个用例（其中 1 个默认跳过）覆盖了解析、规则阈值、静态回退、讯飞签名等纯函数逻辑，质量不错。
+但以下核心路径<strong>完全没有测试</strong>，也正是本次发现的问题没被拦住的原因：</p>
+<ul>
+  <li><strong>鉴权与越权</strong>：<code>_is_accessible</code> / <code>load_elder</code> 无任何负向用例
+  （"子女读他人老人""社区写提醒""老人处置事件"都该返回 403/404，但没人验证）；</li>
+  <li><strong>事件状态机</strong>：<code>event_action</code> 的合法/非法迁移、幂等、角色与 note 校验；</li>
+  <li><strong>通知</strong>：<code>ack</code> / <code>retry</code> / <code>dispatch_notification</code> 与 target 角色校验；</li>
+  <li><strong>快照</strong>：大小/类型/权限校验；<strong>通话与 WS</strong>：信令、<code>peer_ready</code>；</li>
+  <li><strong>助手确认令牌</strong>流程——正因如此，上面"提醒绕过长度校验 → 500"才没被发现。</li>
+</ul>
+<p class="sub">好消息：接口层已经相当扎实。逐条比对后，<code>main.py</code> 中除 <code>/api/health</code>、
+<code>/api/auth/login</code>、<code>/api/capabilities</code> 三个按设计公开的端点外，<strong>其余路由全部有鉴权</strong>，
+且按 id 取资源都做了归属/角色域校验；SQL 全部 ORM 参数化无注入；无硬编码密钥、
+<code>DATABASE_URL</code> 缺失即拒绝启动；"模拟接入"标注诚实，未发现把模拟 120／监控识别／方言识别
+写成真实结果——这条红线是守住的。</p>
+
+<h2>五、需要你拍板的两个决策项</h2>
+
+<div class="item low" style="border-left-color:#b25407">
+  <div class="head"><span class="tag t-p1">决策</span><strong>未提交的 SQLite 预览改动，留还是退？</strong></div>
+  <p>它让项目能脱离 PostgreSQL 快速跑起来（当前 8000 端口跑的就是它），但和维护"业务规则唯一来源、
+  固定技术栈"的约定冲突。两条路：① 正式纳入 —— 提交 + 更新 <code>config.py</code> 与文档，
+  声明 SQLite 仅用于本地预览并明确不支持并发场景；② 回退 —— 保持 PostgreSQL 唯一语义，
+  用 <code>scripts/database.py</code> 起真实库。需要你选。</p>
+</div>
+
+<div class="item low" style="border-left-color:#b25407">
+  <div class="head"><span class="tag t-p1">决策</span><strong>演示口令要不要保留？</strong></div>
+  <p>如果这个项目只在本机/受控内网演示，现状可以接受，但至少该把前端预填和安卓界面明文展示收掉，
+  并加一个 <code>LAOYOU_DEMO</code> 开关。如果会对外，就必须改成随机初始口令 + 强制改密。
+  另外真实密钥、含真实数据的 SQL dump 这类我不会擅自动手，需要你确认后再处理。</p>
+</div>
+
+<h2>六、复核后排除的误报（不计入问题数）</h2>
+<p>子审计提出的以下条目，我回读源码后判定为误报或需降级，<strong>建议不要改</strong>：</p>
+<ul>
+  <li><strong>"通配符 CORS + 凭据"致命组合</strong> —— 实际 <code>main.py:269</code> 是
+  <code>allow_credentials=False</code>，且鉴权走 Bearer 而非 Cookie，不构成 CSRF/凭据泄露组合。
+  来源写死不可配置算 P3 级整洁度问题，我未计入 P2 表。</li>
+  <li><strong>"通知/紧急送达是伪造的"</strong> —— 核实后所有模拟项都带 <code>simulated</code> 标记，
+  <code>capabilities</code> 如实标注，<code>xfyun.py:61-62</code> 未配置直接 503 不返回假结果。合规，不是问题。</li>
+  <li><strong>"Session 泄漏 / 未释放"</strong> —— <code>get_db</code>、WS、调度、init 全部正确关闭，无泄漏。</li>
+  <li><strong>"stop 脚本会误杀用户进程"</strong> —— 脚本先校验命令行与可执行文件路径再 <code>taskkill /PID</code>，
+  全仓库无 <code>taskkill /IM</code>，不会误杀。</li>
+  <li><strong>"数据库脚本会清库"</strong> —— 无 <code>DROP/TRUNCATE</code>，且凭据缺失时拒绝覆盖已有数据。</li>
+</ul>
+
+<h2>七、建议的动手顺序</h2>
+<p>如果只做一轮，我会按这个顺序（前两条投入最小、收益最大）：</p>
+<ol>
+  <li><strong>先判 P0 崩溃的性质</strong>：用 3.11 重建 venv 复测"DB 拉闸"，
+  据此决定是加 <code>connect_timeout</code> 还是同时调整引擎配置。这条不解决，
+  <code>/api/health</code> 在真实故障时是"把服务打挂"而不是"报告故障"。</li>
+  <li><strong>收敛演示口令</strong>：加环境开关 + 去掉前端预填 + 安卓仅 DEBUG 展示。</li>
+  <li><strong>前端请求层三件事一起做</strong>：超时、401 统一拦截、通话票据替代 URL token。</li>
+  <li><strong>打包脚本校验顺序调到压缩之前</strong>（一行位置调整，防的是凭据外泄）。</li>
+  <li><strong>补测试</strong>：优先鉴权/越权负向用例与事件状态机，这是后续所有改动的安全网。</li>
+</ol>
+
+<footer>
+  报告生成：2026-09-11 ｜ 所有结论均基于对当前工作区源码的实际阅读与可复现的运行验证。<br>
+  本次审计为<strong>只读</strong>，未修改任何文件；未提交改动（<code>db.py</code>/<code>models.py</code>/<code>services.py</code>）保持原样。
+</footer>
+
+</div>
+</body>
+</html>

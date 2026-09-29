@@ -15,6 +15,7 @@ let captureElement: HTMLVideoElement | null = null
 let snapshotTimer: number | undefined
 let settingsPollTimer: number | undefined
 let generation = 0
+let lifecycleBound = false
 
 function clearTimer() {
   if (snapshotTimer) window.clearInterval(snapshotTimer)
@@ -43,6 +44,38 @@ function stopTracks() {
   detachCaptureElement()
   clearTimer()
   clearSettingsPoll()
+  unbindLifecycle()
+}
+
+/**
+ * 页面隐藏或关闭时立即停止采集。
+ *
+ * 采集会话是模块级单例，所以离开安全页也会继续每 30 秒上传快照、每 10 秒轮询设置。
+ * 浏览器标签页切到后台或关闭时，摄像头不该继续被占用；这里主动收流，并把原因
+ * 告诉用户（需要继续时重新点启动），而不是静默停止。
+ */
+function handleVisibilityChange() {
+  if (!document.hidden || !previewActive.value) return
+  stopTracks()
+  error.value = '页面已切到后台，摄像头采集已暂停。需要继续时请重新点击启动。'
+}
+
+function handlePageHide() {
+  if (previewActive.value) stopTracks()
+}
+
+function bindLifecycle() {
+  if (lifecycleBound) return
+  lifecycleBound = true
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  window.addEventListener('pagehide', handlePageHide)
+}
+
+function unbindLifecycle() {
+  if (!lifecycleBound) return
+  lifecycleBound = false
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('pagehide', handlePageHide)
 }
 
 async function checkRemoteState() {
@@ -136,6 +169,7 @@ async function start(targetElderId: string, options: { initialSnapshot?: boolean
     captureElement.srcObject = nextStream
     await captureElement.play()
     previewActive.value = true
+    bindLifecycle()
     await attachPreview(previewElement)
     if (options.initialSnapshot !== false) await uploadSnapshot()
     clearTimer()

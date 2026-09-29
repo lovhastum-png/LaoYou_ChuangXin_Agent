@@ -124,7 +124,8 @@ onBeforeUnmount(() => { disposed = true; release() })
 </template>
 
 <style scoped>
-.wake-control { display:flex; flex-wrap:wrap; align-items:center; gap:10px 18px; margin:12px 2px 0; font-size:18px; line-height:1.5; color:var(--muted-strong); }
-.wake-control button { min-height:48px; font-size:20px; }
+/* 字号与间距改为 rem / --sp-*，跟随字号档位与密度档位 */
+.wake-control { display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-10) var(--sp-18); margin:var(--sp-12) 2px 0; font-size:1.125rem; line-height:1.5; color:var(--muted-strong); }
+.wake-control button { min-height:48px; font-size:1.25rem; }
 .wake-error { color:var(--red); }
 </style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import {
   BellRing,
   Camera,
@@ -8,6 +8,7 @@ import {
   Home,
   LogOut,
   MessageCircleHeart,
+  Palette,
   Pill,
   ShieldCheck,
   UsersRound,
@@ -16,6 +17,7 @@ import {
   Wifi,
 } from 'lucide-vue-next'
 import type { NavRoute, Role, User } from '../types'
+import AppearancePanel from './AppearancePanel.vue'
 
 const props = defineProps<{
   user: User
@@ -27,6 +29,8 @@ const emit = defineEmits<{
   navigate: [route: NavRoute]
   logout: []
 }>()
+
+const appearanceOpen = ref(false)
 
 const navItems = computed(() => {
   const elderItems = [
@@ -87,9 +91,20 @@ function select(route: NavRoute) {
         <div class="account-row">
           <CircleUserRound :size="23" :stroke-width="1.8" aria-hidden="true" />
           <span class="account-name">{{ props.user.display_name }}</span>
-          <button class="icon-button quiet" type="button" title="退出登录" aria-label="退出登录" @click="emit('logout')">
-            <LogOut :size="19" :stroke-width="1.8" />
-          </button>
+          <span class="account-actions">
+            <button
+              class="icon-button quiet"
+              type="button"
+              title="外观与阅读"
+              aria-label="外观与阅读"
+              @click="appearanceOpen = true"
+            >
+              <Palette :size="19" :stroke-width="1.8" />
+            </button>
+            <button class="icon-button quiet" type="button" title="退出登录" aria-label="退出登录" @click="emit('logout')">
+              <LogOut :size="19" :stroke-width="1.8" />
+            </button>
+          </span>
         </div>
       </div>
     </aside>
@@ -99,9 +114,14 @@ function select(route: NavRoute) {
       <footer class="status-bar">
         <span class="status-item"><Wifi :size="24" :stroke-width="2" />老友服务</span>
         <span class="status-divider" aria-hidden="true" />
+        <button class="status-item status-button" type="button" @click="appearanceOpen = true">
+          <Palette :size="24" :stroke-width="2" />外观与阅读
+        </button>
         <span class="status-item"><Volume2 :size="24" :stroke-width="2" />语音设置</span>
         <span v-if="props.user.role !== 'elder'" class="status-item status-role"><BellRing :size="21" :stroke-width="1.8" />{{ roleLabel[props.user.role] }}</span>
       </footer>
     </main>
+
+    <AppearancePanel :open="appearanceOpen" @close="appearanceOpen = false" />
   </div>
 </template>

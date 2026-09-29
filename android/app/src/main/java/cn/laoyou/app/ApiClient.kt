@@ -489,13 +489,15 @@ class ApiClient(baseUrl: String, var token: String? = null) {
 
     fun getEscorts(): List<Escort> = buildList {
         val array = requestJsonArray("GET", "/escorts")
-        for (i in 0 until array.length()) add(parseEscort(array.getJSONObject(i))!!)
+        // 服务端返回异常条目时跳过，不要用 !! 直接崩掉整个列表。
+        for (i in 0 until array.length()) parseEscort(array.getJSONObject(i))?.let { add(it) }
     }
 
     fun escortAction(id: String, action: String, note: String? = null): Escort {
         val body = JSONObject().put("action", action)
         note?.takeIf { it.isNotBlank() }?.let { body.put("note", it) }
-        return parseEscort(requestJson("POST", "/escorts/$id/actions", body))!!
+        return parseEscort(requestJson("POST", "/escorts/$id/actions", body))
+            ?: throw ApiException(0, "服务返回的陪诊数据不完整，请重试。")
     }
 
     fun getReminders(elderId: String): List<Reminder> = buildList {

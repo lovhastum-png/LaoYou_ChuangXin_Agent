@@ -16,10 +16,11 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy import JSON
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .db import Base
+from .db import Base, UTCDateTime
 
 
 def uuid_str() -> str:
@@ -27,8 +28,8 @@ def uuid_str() -> str:
 
 
 def json_type() -> Any:
-    # JSONB is the authoritative PostgreSQL storage type used by the app.
-    return JSONB
+    # 本地 SQLite 快速预览：SQLite 用 JSON，PostgreSQL 仍用 JSONB。
+    return JSON().with_variant(JSONB, "postgresql")
 
 
 def default_routine() -> dict[str, str]:
@@ -66,7 +67,7 @@ class User(Base):
     community_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     elder_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), nullable=False
     )
 
 
@@ -76,10 +77,10 @@ class AuthSession(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), nullable=False
     )
 
 
@@ -101,10 +102,10 @@ class Elder(Base):
         json_type(), nullable=False, default=default_rules
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
 
@@ -119,7 +120,7 @@ class Reminder(Base):
     time: Mapped[str] = mapped_column(String(5), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), nullable=False
     )
 
 
@@ -131,13 +132,13 @@ class Broadcast(Base):
     elder_id: Mapped[str] = mapped_column(ForeignKey("elders.id"), nullable=False, index=True)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    played_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scheduled_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    played_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="system")
     reminder_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     dedupe_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), nullable=False
     )
 
 
@@ -154,12 +155,12 @@ class Observation(Base):
     value: Mapped[Any | None] = mapped_column(json_type(), nullable=True)
     duration_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sleeping: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
     location: Mapped[dict[str, Any] | None] = mapped_column(json_type(), nullable=True)
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="simulated")
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), nullable=False
     )
 
 
@@ -180,10 +181,10 @@ class Event(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     dedupe_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
 
@@ -194,7 +195,7 @@ class Timeline(Base):
     event_id: Mapped[str] = mapped_column(ForeignKey("events.id"), nullable=False, index=True)
     node: Mapped[str] = mapped_column(String(64), nullable=False)
     at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), nullable=False
     )
     actor: Mapped[str] = mapped_column(String(128), nullable=False)
     detail: Mapped[str] = mapped_column(Text, nullable=False)
@@ -209,10 +210,10 @@ class Notification(Base):
     target: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), nullable=False
     )
-    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     simulated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -228,10 +229,10 @@ class Escort(Base):
     platform: Mapped[str] = mapped_column(String(32), nullable=False, default="放心医")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="requested")
     requested_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), nullable=False
     )
-    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     simulated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
@@ -245,10 +246,10 @@ class AssistantToken(Base):
     elder_id: Mapped[str] = mapped_column(ForeignKey("elders.id"), nullable=False)
     action: Mapped[str] = mapped_column(String(64), nullable=False)
     proposal: Mapped[dict[str, Any]] = mapped_column(json_type(), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), nullable=False
     )
 
 
@@ -261,10 +262,10 @@ class Call(Base):
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ringing")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), nullable=False
     )
-    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    answered_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    ended_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
 
 class Snapshot(Base):
@@ -272,7 +273,7 @@ class Snapshot(Base):
 
     elder_id: Mapped[str] = mapped_column(ForeignKey("elders.id"), primary_key=True)
     content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
     content_type: Mapped[str] = mapped_column(String(64), nullable=False, default="image/jpeg")
 
 
@@ -282,5 +283,5 @@ class DemoConfig(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[Any] = mapped_column(json_type(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )

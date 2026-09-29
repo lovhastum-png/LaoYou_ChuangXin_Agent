@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>老友项目修复报告 · 2026-09-11</title>
+<style>
+  :root{
+    --bg:#f7f8f6; --card:#fff; --ink:#1c2320; --muted:#5f6b64; --line:#e3e7e2;
+    --ok:#2f6b46; --oksoft:#eaf5ee; --keep:#27648a; --keepsoft:#eaf3fa;
+    --warn:#b25407; --warnsoft:#fff4e5; --code:#f2f4f1;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif}
+  .wrap{max-width:980px;margin:0 auto;padding:40px 24px 80px}
+  header.top{border-bottom:3px solid var(--ink);padding-bottom:20px;margin-bottom:26px}
+  h1{margin:0 0 6px;font-size:27px;letter-spacing:-.4px}
+  .sub{color:var(--muted);font-size:14px}
+  h2{font-size:19px;margin:38px 0 14px;padding-left:11px;border-left:5px solid var(--ink)}
+  h3{font-size:15.5px;margin:22px 0 6px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0 6px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .stat b{display:block;font-size:26px;line-height:1.2}
+  .stat span{color:var(--muted);font-size:12.5px}
+  .stat.f b{color:var(--ok)} .stat.k b{color:var(--keep)} .stat.w b{color:var(--warn)}
+  .item{background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:15px 18px;margin:13px 0;border-left:5px solid var(--ok)}
+  .item.keep{border-left-color:var(--keep)}
+  .item.warn{border-left-color:var(--warn)}
+  .head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:5px}
+  .head strong{font-size:15.5px}
+  .tag{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap}
+  .t-ok{background:var(--oksoft);color:var(--ok)}
+  .t-keep{background:var(--keepsoft);color:var(--keep)}
+  .t-warn{background:var(--warnsoft);color:var(--warn)}
+  .loc{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;color:var(--muted);
+    background:var(--code);border-radius:5px;padding:2px 7px}
+  .item p{margin:6px 0}
+  .why{background:#f4f6f3;border-radius:7px;padding:9px 12px;margin-top:9px;font-size:13.5px;color:#39463f}
+  code{font-family:ui-monospace,Consolas,monospace;font-size:13px;background:var(--code);padding:1px 5px;border-radius:4px}
+  pre{background:#1f2623;color:#e8ece9;padding:13px 16px;border-radius:9px;overflow-x:auto;font-size:12.5px;line-height:1.6}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px;background:var(--card);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#eef1ee;font-size:13px}
+  tr:last-child td{border-bottom:0}
+  .note{background:#fffbe8;border:1px solid #f0e3b0;border-radius:9px;padding:13px 16px;font-size:14px;margin:16px 0}
+  ul{margin:8px 0;padding-left:22px} li{margin:4px 0}
+  footer{margin-top:46px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>老友项目 · 修复报告</h1>
+  <div class="sub">工作区：<code>D:\实验室项目\LaoYou_ChuangXin_Agent</code> ｜ 日期：2026-09-11 ｜
+  基线提交：<code>369b9aa</code> ｜ 改动 21 个文件 + 新增 1 个测试文件</div>
+</header>
+
+<div class="note">
+  <strong>口径</strong>：本报告严格区分三类 —— <b>已修复</b>（改了且验证过）、
+  <b>已核实但按原样保留</b>（附保留理由，不是漏改）、<b>需要你自己决定</b>（我不擅自动手）。
+  所有"已修复"项都给出了验证方式，可复现。
+</div>
+
+<div class="stats">
+  <div class="stat f"><b>18</b><span>已修复并验证</span></div>
+  <div class="stat k"><b>4</b><span>核实后按原样保留</span></div>
+  <div class="stat w"><b>3</b><span>需要你决定 / 后续</span></div>
+  <div class="stat f"><b>28</b><span>后端测试全绿</span></div>
+</div>
+
+<h2>一、P0：两条最要紧的已修复</h2>
+
+<div class="item">
+  <div class="head"><span class="tag t-ok">已修复</span><strong>数据库连不上时进程崩溃</strong></div>
+  <div class="loc">backend/app/db.py:48-72</div>
+  <p>新增 <code>_engine_options()</code>，按方言组装引擎参数：PostgreSQL 显式带上
+  <code>connect_args={"connect_timeout": 5}</code>（可用 <code>LAOYOU_DB_CONNECT_TIMEOUT</code> 调）。
+  <code>check_database()</code> 也补了兜底 <code>except Exception</code>。</p>
+  <div class="why">
+    <b>验证</b>：拿不可达的库实测，修复前进程静默死亡（无 traceback、退出码 1）；
+    修复后正常抛 <code>OperationalError</code> 被捕获，5.1 秒返回 <code>False</code>，进程存活。
+    <br><b>连带修复</b>：<code>pytest</code> 不再跑到 <code>test_static.py</code> 就静默中断。
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="tag t-ok">已修复</span><strong>演示口令的暴露面</strong></div>
+  <div class="loc">backend/app/config.py、db.py ｜ web/src/pages/LoginPage.vue:20 ｜ android/.../MainActivity.kt</div>
+  <p>按你的选择"保留演示、堵住暴露面"做了四件事：</p>
+  <ul>
+    <li>口令改为可用 <code>LAOYOU_DEMO_PASSWORD</code> 覆盖；仍用内置默认值时启动打印告警；</li>
+    <li>新增 <code>LAOYOU_SEED_DEMO=0</code>，可彻底不创建演示账号（对外部署用）；</li>
+    <li>前端登录页<b>去掉密码预填</b>（构建产物里的口令等于公开凭据）；</li>
+    <li>安卓端演示账号提示<b>只在 debug 构建显示</b>（用 <code>ApplicationInfo.FLAG_DEBUGGABLE</code> 判断，无需改 Gradle）。</li>
+  </ul>
+  <div class="why">
+    <b>验证</b>：<code>grep Laoyou123 web/dist/assets/*.js</code> → 0 命中；
+    <code>grep -rn Laoyou123 android/app/src/main/</code> → 无命中；
+    启动日志确认出现默认口令告警。
+  </div>
+</div>
+
+<h2>二、P1：已修复</h2>
+
+<div class="item">
+  <div class="head"><span class="tag t-ok">已修复</span><strong>请求层：超时、401 拦截、WS 地址推导</strong></div>
+  <div class="loc">web/src/lib/api.ts</div>
+  <p>① 加 15 秒超时（<code>AbortController</code>，兼容调用方传入的 signal）；
+  ② 401 统一触发 <code>clearSession()</code> 并广播 <code>laoyou:unauthorized</code>，
+  由 <code>App.vue</code> 回登录页（登录接口本身的 401 已排除，那是"密码错"）；
+  ③ <code>websocketUrl</code> 改为从 <code>API_BASE</code> 推导 —— 原来写死同源 host，
+  配了独立 API 域名后信令必然连错；④ 错误文案中文化兜底，不再把英文 <code>msg</code> 丢给老人看。</p>
+  <div class="why"><b>验证</b>：<code>vue-tsc --noEmit</code> 通过、<code>vite build</code> 成功；产物中可检索到 <code>laoyou:unauthorized</code>。</div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="tag t-ok">已修复</span><strong>摄像头/麦克风在页面隐藏后继续采集</strong></div>
+  <div class="loc">web/src/lib/useCameraSession.ts ｜ App.vue ｜ AssistantPanel.vue</div>
+  <p>① <code>useCameraSession</code> 新增 <code>visibilitychange</code> / <code>pagehide</code> 监听，
+  页面切后台立即收流并明确告诉用户"已暂停，需要时重新启动"，而不是静默占用摄像头；
+  ② <code>App.vue</code> 卸载时 <code>camera.stop()</code>；
+  ③ 修掉 <code>AssistantPanel</code> 的授权竞态 —— <code>await getUserMedia</code> 期间用户关掉面板，
+  以前麦克风会一直开着，现在补了 <code>disposed</code> 检查并立即停轨。</p>
+  <div class="why"><b>验证</b>：类型检查 + 构建通过；三处监听/清理逻辑可静态确认；竞态路径与已有正确实现（<code>CallPage</code>）对齐。</div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="tag t-ok">已修复</span><strong>会话 token 写进地址栏</strong></div>
+  <div class="loc">web/src/App.vue:63</div>
+  <p>同一浏览器内本就是已登录状态，<code>CallPage</code> 会自行取本地会话，URL 里那个 token 是冗余的，
+  已移除。这样浏览器历史、<code>Referer</code>、反向代理日志都不再残留 7 天期凭据。</p>
+  <div class="why">
+    <b>注意</b>：我没有一并删掉安卓 WebView 用的 <code>?token=...&embedded=1</code>
+    （<code>ApiClient.kt:592</code>）—— 那条链路是承载功能的，删了内嵌通话就废了。
+    要收敛它需要一次性通话票据（后端 + Kotlin 双侧改造），列入后续。
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="tag t-ok">已修复</span><strong>打包脚本的敏感文件校验形同虚设</strong></div>
+  <div class="loc">scripts/build-package.ps1:219-247</div>
+  <p>校验挪到 <code>Compress-Archive</code> <b>之前</b>；并新增压缩后按 zip 条目名二次复核，
+  命中 <code>.env / local.env / database-credentials.json / postgres-data / .keystore</code> 就删掉产物再报错。</p>
+  <div class="why"><b>验证</b>：用显式 UTF-8 读取做 PowerShell AST 解析，<code>build-package.ps1</code>、<code>start.ps1</code>、<code>stop.ps1</code>、<code>build-web.ps1</code> 全部语法通过。</div>
+</div>
+
+<h2>三、P2 及工程卫生：已修复</h2>
+
+<table>
+  <tr><th style="width:32%">问题</th><th style="width:30%">改动</th><th>说明</th></tr>
+  <tr>
+    <td>请求体先缓冲后判长度</td>
+    <td><code>backend/app/main.py</code> 新增 <code>BodySizeLimitMiddleware</code></td>
+    <td>ASGI 中间件，先在 <code>Content-Length</code> 上拒绝，再在流式 <code>receive</code> 上按实际字节数兜底（覆盖 chunked）。默认 4MB，超限返回 413 中文提示。<b>验证</b>：pytest 用例 + 真实起服务发 5MB 请求体 → 413。</td>
+  </tr>
+  <tr>
+    <td>通话状态并发竞态</td>
+    <td><code>main.py</code> <code>_get_call_for_user(lock=True)</code></td>
+    <td>写路径加行锁，<code>answer</code>/<code>end</code>/<code>decline</code> 不再各自基于旧状态写入。</td>
+  </tr>
+  <tr>
+    <td><code>FOR UPDATE</code> 误锁 elders 表</td>
+    <td><code>main.py</code> <code>.with_for_update(of=Event)</code></td>
+    <td>只锁事件行，避免与"先锁 elder"的流程互相等待。</td>
+  </tr>
+  <tr>
+    <td>广播已播回传无锁、角色宽于契约</td>
+    <td><code>main.py</code> <code>mark_broadcast_played</code></td>
+    <td>改为带行锁查询；角色收敛为 elder/admin（前端也只有老人端会调用它）。</td>
+  </tr>
+  <tr>
+    <td>助手创建提醒绕过校验 → 500</td>
+    <td><code>main.py</code> <code>_validated_reminder_proposal()</code></td>
+    <td>前置校验长度与时间格式。<b>刻意没有复用 <code>ReminderCreate</code></b>：助手解析出的 <code>dose</code> 是空串，而复用会让功能直接挂掉。<b>验证</b>：pytest 断言超长药名返回 422。</td>
+  </tr>
+  <tr>
+    <td><code>_commit</code> 只兜 IntegrityError</td>
+    <td><code>main.py</code> 补 <code>DataError → 422</code></td>
+    <td>字段超长等数据库层错误不再直接 500。</td>
+  </tr>
+  <tr>
+    <td>夜间窗口两端相同会让规则静默失效</td>
+    <td><code>backend/app/schemas.py</code> <code>Rules</code> 校验</td>
+    <td><code>night_start == night_end</code> 时 <code>is_night</code> 恒为假，现在直接 422 拒绝。<b>验证</b>：pytest 用例。</td>
+  </tr>
+  <tr>
+    <td>CORS 来源写死</td>
+    <td><code>main.py</code> 改读 <code>LAOYOU_CORS_ORIGINS</code></td>
+    <td>默认仍是 <code>*</code>，行为不变，只是可配置了。</td>
+  </tr>
+  <tr>
+    <td>中文输入法回车误发半成品</td>
+    <td><code>AssistantPanel.vue</code> <code>onEnter</code></td>
+    <td>判断 <code>isComposing</code>/<code>keyCode 229</code> 后再发送。之前拼音选词回车会直接清空并发送。</td>
+  </tr>
+  <tr>
+    <td>登录表单可重复提交</td>
+    <td><code>LoginPage.vue</code> <code>submit()</code></td>
+    <td>加 <code>if (busy) return</code> 短路 —— 按钮 disabled 拦不住表单回车事件，连按回车会在服务端建多个会话。</td>
+  </tr>
+  <tr>
+    <td>老人端点按区域偏小 / 对比度不足</td>
+    <td><code>styles.css</code></td>
+    <td><code>.icon-button</code> 38px → <b>44px</b>；<code>.small-primary</code> 加 44px 最小高度；橙色 <code>#dc6908</code>（约 3.5:1）→ <code>#b25407</code>（约 <b>5.0:1</b>）。<b>验证</b>：产物 CSS 中旧色已消失、新色已生效。</td>
+  </tr>
+  <tr>
+    <td>自定义开关键盘焦点不可见</td>
+    <td><code>styles.css</code></td>
+    <td>焦点环从 1×1 的透明 input 改画到可见轨道上。</td>
+  </tr>
+  <tr>
+    <td>轮询重叠 / 不感知页面可见性</td>
+    <td><code>ElderHome.vue</code>、<code>IncomingCall.vue</code></td>
+    <td>ElderHome 的 15 秒轮询补重入锁（请求慢于间隔会越叠越多）；来电轮询在页面隐藏时停止、回到前台立即补一次。</td>
+  </tr>
+  <tr>
+    <td>未知观测结构直接显示原始 JSON</td>
+    <td><code>lib/format.ts</code></td>
+    <td>不再 <code>JSON.stringify</code>，改为"已记录"，避免老人看到 <code>{"foo":1}</code>。</td>
+  </tr>
+  <tr>
+    <td>安卓网络错误直接显示英文原文</td>
+    <td><code>MainActivity.kt</code> <code>friendlyMessage()</code></td>
+    <td>"Failed to connect to /192.168.1.100:18080" → "连接不上电脑，请确认电脑已启动老友，且手机和电脑在同一个网络"。</td>
+  </tr>
+  <tr>
+    <td>契约列表项 <code>!!</code> 可能 NPE</td>
+    <td><code>ApiClient.kt</code></td>
+    <td>列表改 <code>?.let</code> 跳过异常条目；单个对象改为抛出中文异常。</td>
+  </tr>
+  <tr>
+    <td>QA 截图被提交进仓库</td>
+    <td><code>.gitignore</code></td>
+    <td>新增忽略 <code>artifacts/qa/</code>（14 张 PNG 已在版本库中，见下方"需要你决定"）。</td>
+  </tr>
+  <tr>
+    <td>文档路径约定与实际不符等 3 处</td>
+    <td><code>AGENTS.md</code>、<code>doc/00</code>、<code>doc/01</code></td>
+    <td>路径改为"当前工作区根目录（本机为 <code>D:\实验室项目\LaoYou_ChuangXin_Agent</code>）"，避免照文档执行必然失败。</td>
+  </tr>
+  <tr>
+    <td>契约与实现不一致</td>
+    <td><code>doc/01-子文档/11-接口契约.md</code></td>
+    <td><code>GET /health</code> → <code>/api/health</code>；补便携包端口 18080/55433；补请求体上限与演示口令开关说明。</td>
+  </tr>
+  <tr>
+    <td>文档 apk 名不存在</td>
+    <td><code>doc/01-开发者文档.md</code></td>
+    <td><code>laoyou-debug.apk</code> → <code>laoyou-android.apk</code>。</td>
+  </tr>
+</table>
+
+<h2>四、测试：补上了最大的盲区</h2>
+<p>新增 <code>backend/tests/test_api_authz.py</code>，<b>15 个用例</b>，用独立 SQLite 引擎 +
+<code>dependency_overrides</code>，<b>不需要本地 PostgreSQL</b>。覆盖此前完全没有测试的路径：</p>
+<ul>
+  <li>匿名访问受保护接口 → 401（5 个端点参数化）；</li>
+  <li>子女读别的家庭的老人 → 列表不含、详情 404、写入 403；</li>
+  <li>社区角色写提醒 → 403（只读边界）；老人角色处置事件 → 403；</li>
+  <li>老人端才能回传播报已播 → 子女 403；</li>
+  <li>伪造 <code>live</code> 观测来源 → 422；</li>
+  <li>夜间窗口两端相同 → 422；助手确认超长药名 → 422；</li>
+  <li>超大请求体 → 413；数据库故障时 <code>/api/health</code> → 503。</li>
+</ul>
+<p>另外修了 <code>test_static.py</code>：改为 <code>web/dist</code> 缺失时 skip，且不再触发 lifespan
+（原来它会连真实数据库，这正是 <code>pytest</code> 静默中断的原因）。</p>
+<div class="note">
+  <b>最终结果：<code>28 passed, 1 skipped</code></b>（跳过的是 <code>test_scheduler</code>，它需要真实 PostgreSQL，
+  默认关闭）。连续两次运行结果一致。
+</div>
+
+<h2>五、已核实但按原样保留（附理由，不是漏改）</h2>
+
+<div class="item keep">
+  <div class="head"><span class="tag t-keep">保留</span><strong>WebSocket 没有应用层心跳</strong></div>
+  <div class="loc">backend/app/main.py <code>calls_ws</code></div>
+  <p>复核后判定为<b>误报</b>：uvicorn 的 WebSocket 协议层默认 <code>ping_interval=20</code>、
+  <code>ping_timeout=20</code>，半开连接本身会被清理。</p>
+  <div class="why">
+    如果我按审计建议加"空闲超时"，会<b>误断正在通话但暂时没有信令消息的合法连接</b> ——
+    WebRTC 媒体是 P2P 的，通话期间信令通道本来就静默。所以不加。
+  </div>
+</div>
+
+<div class="item keep">
+  <div class="head"><span class="tag t-keep">保留</span><strong>BroadcastPlayer 的后台轮询不暂停</strong></div>
+  <div class="loc">web/src/components/BroadcastPlayer.vue</div>
+  <p>它有 <code>ticking</code> 重入锁，没有重叠问题。页面隐藏时暂停轮询虽然省请求，
+  但会<b>漏掉用药提醒的准点播报</b>，而浏览器本身已经对后台定时器做了降频。</p>
+  <div class="why">这是功能取舍：提醒的可靠性优先于这点后台请求量。老人端漏一次用药提醒，代价比多几个请求大得多。</div>
+</div>
+
+<div class="item keep">
+  <div class="head"><span class="tag t-keep">保留</span><strong>安卓全局明文 HTTP（<code>usesCleartextTraffic</code>）</strong></div>
+  <div class="loc">android/app/src/main/AndroidManifest.xml</div>
+  <p>按你的选择保留了连通性（局域网 IP 无法申请证书，收紧会连不上后端），
+  但做了两件事：Manifest 里写清风险与正式部署的替代方案；登录页新增显著提示
+  "仅请在可信的家庭或办公网络中使用"。</p>
+  <div class="why">这是"已知风险 + 缓解"的处理，不是忽略。正式对外部署时应改 HTTPS 并换回 networkSecurityConfig 白名单。</div>
+</div>
+
+<div class="item keep">
+  <div class="head"><span class="tag t-keep">保留</span><strong>子审计的其余误报</strong></div>
+  <p>"通配符 CORS + 凭据"（实际 <code>allow_credentials=False</code>，且走 Bearer 非 Cookie）、
+  "模拟接入造假"（所有模拟项都带 <code>simulated</code> 标记，未配置直接 503，红线是守住的）、
+  "session 泄漏"、"stop 脚本误杀用户进程"、"数据库脚本清库" —— 逐条回读源码后<b>均不成立</b>，未改动。</p>
+</div>
+
+<h2>六、需要你决定 / 只能你来做的</h2>
+
+<div class="item warn">
+  <div class="head"><span class="tag t-warn">需你决定</span><strong>把已跟踪的 QA 截图从版本库移除</strong></div>
+  <p>我只加了 <code>.gitignore</code> 规则 —— 对<b>已经跟踪</b>的文件不生效。要真正移除需要执行：</p>
+  <pre>git rm -r --cached artifacts/qa</pre>
+  <p>我没有替你执行，因为项目约定"不擅自提交 Git"，这属于仓库状态变更，应由你确认后操作。</p>
+</div>
+
+<div class="item warn">
+  <div class="head"><span class="tag t-warn">需你验证</span><strong>安卓端未编译验证（本机缺工具链）</strong></div>
+  <p>本机<b>没有 JDK17 和 Android SDK</b>（<code>C:/Program Files/Java/jdk-17</code> 与 <code>D:/Android/Sdk</code> 均不存在），
+  所以我改的 Kotlin 代码<b>无法编译验证</b>。三处改动都是低风险的语法级调整
+  （错误文案映射、DEBUG 判断、<code>!!</code> 改安全写法），但仍需要你在有工具链的机器上跑一次
+  <code>gradlew :app:assembleDebug</code> 确认。</p>
+  <div class="why">
+    同因，我<b>刻意没做</b>安卓轮询的生命周期门控（需要 <code>repeatOnLifecycle</code> 包裹两个
+    <code>LaunchedEffect</code>）—— 这是结构性改动，在无法编译验证的前提下不该动。
+    它在审计里是 P2（退到后台仍每 5/30 秒打网络），建议你有工具链时再处理。
+  </div>
+</div>
+
+<div class="item warn">
+  <div class="head"><span class="tag t-warn">需你决定</span><strong>venv 仍是 Python 3.13，未重建</strong></div>
+  <p><code>backend/.venv</code> 基于 Python <b>3.13.0</b> 创建，而 <code>AGENTS.md</code> 约定的是 <b>3.11</b>。
+  那条 P0 崩溃很可能和这个组合有关，虽然我用 <code>connect_timeout</code> 从代码侧修好了，
+  但<b>根因可能与运行环境有关</b>。</p>
+  <div class="why">
+    建议：用 3.11 重建 venv 后把 <code>LAOYOU_DB_CONNECT_TIMEOUT</code> 相关回归再跑一遍。
+    如果 3.11 下不加 <code>connect_timeout</code> 也不再崩溃，就说明是 psycopg 在该版本组合下的问题 ——
+    那么未来升级 Python 时要特别留意这条。我没有擅自重建 venv，因为那会改动你当前能跑的环境。
+  </div>
+</div>
+
+<h2>七、你可以怎么复核</h2>
+<table>
+  <tr><th style="width:34%">目的</th><th>命令</th></tr>
+  <tr><td>后端全部测试（不需要 PostgreSQL）</td><td><code>cd backend && ./.venv/Scripts/python.exe -X utf8 -m pytest tests/ -q</code></td></tr>
+  <tr><td>前端类型检查 + 构建</td><td><code>cd web && ./node_modules/.bin/vue-tsc --noEmit && ./node_modules/.bin/vite build</code></td></tr>
+  <tr><td>确认前端产物不过期</td><td><code>find web/src -newer web/dist/index.html</code>（应无输出）</td></tr>
+  <tr><td>确认构建产物无明文口令</td><td><code>grep -c Laoyou123 web/dist/assets/*.js</code>（应为 0）</td></tr>
+  <tr><td>起服务冒烟</td><td><code>DATABASE_URL="sqlite:///D:/实验室项目/LaoYou_ChuangXin_Agent/tmp/preview.db" ./.venv/Scripts/python.exe -X utf8 -m uvicorn app.main:app --port 8000</code></td></tr>
+</table>
+
+<div class="note">
+  <b>环境提示</b>：你原来跑在 8000 端口的后端进程启动于我改动<b>之前</b>，
+  它用的还是旧代码。要让修复生效，请重启该服务（<code>./scripts/stop.ps1</code> 再 <code>./scripts/start.ps1</code>）。
+  另外 <code>web/dist</code> 已被我重新构建，如果后端是在构建前启动的，也需要重启才会挂载新的 SPA 路由。
+</div>
+
+<footer>
+  报告生成：2026-09-11 ｜ 共修改 21 个文件、新增 1 个测试文件；未提交 Git。<br>
+  验证手段：pytest（28 passed）、py_compile、vue-tsc、vite build、独立端口 uvicorn 冒烟、
+  构建产物 grep 核验、PowerShell AST 语法解析。
+</footer>
+
+</div>
+</body>
+</html>

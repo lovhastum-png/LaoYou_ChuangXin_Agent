@@ -51,6 +51,7 @@ let audioContext: AudioContext | null = null
 let audioSource: MediaStreamAudioSourceNode | null = null
 let audioProcessor: ScriptProcessorNode | null = null
 let audioStream: MediaStream | null = null
+let disposed = false
 let audioChunks: Float32Array[] = []
 let recordingTimer: number | undefined
 
@@ -111,6 +112,16 @@ async function sendMessage(value = text.value) {
 
 function confirmProposal() {
   if (confirmToken.value) void sendMessage('确认')
+}
+
+/**
+ * 中文输入法用回车确认候选词时也会触发 keydown.enter。
+ * 不判断组合态就会把半成品文本直接发出去。
+ */
+function onEnter(event: KeyboardEvent) {
+  if (event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  void sendMessage()
 }
 
 function downsample(samples: Float32Array[], inputRate: number, outputRate: number): Float32Array {
@@ -207,6 +218,13 @@ async function startDialectRecording() {
     const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!AudioContextCtor) throw new Error('unsupported')
     audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+    // 授权弹窗未决期间用户可能已经关闭面板：卸载钩子跑在前面，这里必须补收流，
+    // 否则麦克风会一直开着。
+    if (disposed) {
+      audioStream.getTracks().forEach((track) => track.stop())
+      audioStream = null
+      return
+    }
     audioContext = new AudioContextCtor()
     audioSource = audioContext.createMediaStreamSource(audioStream)
     audioProcessor = audioContext.createScriptProcessor(4096, 1, 1)
@@ -295,6 +313,7 @@ function stopSpeaking() {
 defineExpose({ sendMessage })
 
 onBeforeUnmount(() => {
+  disposed = true
   if (recognition) {
     recognition.onend = null
     recognition.onresult = null
@@ -343,7 +362,7 @@ onBeforeUnmount(() => {
         <MicOff v-if="listening || recording" :size="23" />
         <Mic v-else :size="23" />
       </button>
-      <input v-model="text" type="text" placeholder="输入文字告诉通通" @keydown.enter.prevent="sendMessage()" />
+      <input v-model="text" type="text" placeholder="输入文字告诉通通" @keydown.enter="onEnter" />
       <button class="send-button" type="button" aria-label="发送" title="发送" :disabled="busy || !text.trim()" @click="sendMessage()"><Send :size="21" /></button>
     </div>
     <div class="assistant-tools">

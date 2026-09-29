@@ -3,7 +3,7 @@ import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import AppShell from './components/AppShell.vue'
 import BroadcastPlayer from './components/BroadcastPlayer.vue'
 import IncomingCall from './components/IncomingCall.vue'
-import { api, clearSession, getStoredUser, getToken, saveSession } from './lib/api'
+import { api, clearSession, getStoredUser, getToken, saveSession, UNAUTHORIZED_EVENT } from './lib/api'
 import { useCameraSession } from './lib/useCameraSession'
 import CallPage from './pages/CallPage.vue'
 import CallsPage from './pages/CallsPage.vue'
@@ -56,12 +56,21 @@ function navigate(target: NavRoute) {
 }
 
 function openCall(call: Pick<Call, 'id'>) {
-  const token = getToken()
-  if (!token) return
+  if (!getToken()) return
   resumeCameraId = camera.previewActive.value ? camera.elderId.value : null
   camera.stop()
-  window.history.pushState({}, '', `/call/${encodeURIComponent(call.id)}?token=${encodeURIComponent(token)}`)
+  // 不要把会话令牌放进地址栏：同源页面本就是已登录状态，CallPage 会自行取用
+  // 本地会话。地址栏里的 token 会进入浏览器历史、Referer 与反向代理日志。
+  // （Android 内嵌 WebView 走 embedded=1 的独立链路，不经过这里。）
+  window.history.pushState({}, '', `/call/${encodeURIComponent(call.id)}`)
   updateRoute()
+}
+
+/** 会话在请求中被判定失效：清掉本地状态并回到登录页。 */
+function handleUnauthorized() {
+  resumeCameraId = null
+  camera.stop()
+  user.value = null
 }
 
 async function handleLogin(session: Session) {
@@ -83,6 +92,7 @@ async function logout() {
 
 onMounted(async () => {
   window.addEventListener('popstate', updateRoute)
+  window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized)
   const token = getToken()
   if (!token) {
     loading.value = false
@@ -98,7 +108,11 @@ onMounted(async () => {
   }
 })
 
-onBeforeUnmount(() => window.removeEventListener('popstate', updateRoute))
+onBeforeUnmount(() => {
+  window.removeEventListener('popstate', updateRoute)
+  window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized)
+  camera.stop()
+})
 </script>
 
 <template>

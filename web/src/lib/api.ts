@@ -18,6 +18,12 @@ import type {
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
 const TOKEN_KEY = 'laoyou.token'
 const USER_KEY = 'laoyou.user'
+/** 单次请求上限：超过即中断，避免弱网下界面永久停留在加载态。 */
+const REQUEST_TIMEOUT_MS = 15_000
+/** 会话失效时广播，由 App.vue 监听后回登录页。 */
+export const UNAUTHORIZED_EVENT = 'laoyou:unauthorized'
+
+let unauthorizedNotified = false
 
 export class ApiError extends Error {
   status: number
@@ -46,6 +52,7 @@ export function getStoredUser(): User | null {
 }
 
 export function saveSession(session: Session): void {
+  unauthorizedNotified = false
   localStorage.setItem(TOKEN_KEY, session.token)
   localStorage.setItem(USER_KEY, JSON.stringify(session.user))
 }
@@ -53,6 +60,18 @@ export function saveSession(session: Session): void {
 export function clearSession(): void {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
+}
+
+/** 会话失效：清掉本地凭证并通知界面回登录页，只广播一次。 */
+function handleUnauthorized(): void {
+  clearSession()
+  if (unauthorizedNotified) return
+  unauthorizedNotified = true
+  window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+}
+
+function hasChinese(text: string): boolean {
+  return /[\u4e00-\u9fa5]/.test(text)
 }
 
 function readableErrorDetail(detail: unknown, status: number): string {
@@ -70,11 +89,14 @@ function readableErrorDetail(detail: unknown, status: number): string {
       if (/input should be .*dictionary/i.test(message)) return '请求体格式不正确'
       if (/field required/i.test(message)) return location ? `${location}为必填项` : '缺少必填项'
       if (/valid string/i.test(message)) return location ? `${location}格式不正确` : '文本格式不正确'
+      // 老人端会直接看到这句话，英文原文（含字段名）对老人没有意义。
+      if (!hasChinese(message)) return location ? `${location}填写不正确` : '填写内容有问题，请检查后重试'
       return location ? `${location}：${message}` : message
     }).filter(Boolean)
     if (messages.length) return status === 422 ? `请求参数有误：${messages.join('；')}` : messages.join('；')
   }
-  return `请求失败（${status}）`
+  if (status >= 500) return '服务暂时不可用，请稍后重试。'
+  return '操作没有成功，请重试或找家人帮忙。'
 }
 
 async function request<T>(path: string, init: RequestInit = {}, authToken?: string): Promise<T> {
@@ -83,7 +105,30 @@ async function request<T>(path: string, init: RequestInit = {}, authToken?: stri
   const token = authToken || getToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
 
-  const response = await fetch(`${API_BASE}${path}`, { ...init, headers })
+  const controller = new AbortController()
+  const callerSignal = init.signal ?? null
+  const abortFromCaller = () => controller.abort()
+  if (callerSignal) {
+    if (callerSignal.aborted) controller.abort()
+    else callerSignal.addEventListener('abort', abortFromCaller, { once: true })
+  }
+  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}${path}`, { ...init, headers, signal: controller.signal })
+  } catch (cause) {
+    // 区分"超时/主动中断"与"连不上服务"，前者可重试，后者要查网络。
+    if (controller.signal.aborted) throw new ApiError(0, '网络超时，请稍后重试。')
+    throw new ApiError(0, '连接不上老友服务，请检查网络后重试。')
+  } finally {
+    window.clearTimeout(timer)
+    callerSignal?.removeEventListener('abort', abortFromCaller)
+  }
+
+  // 登录接口本身的 401 是"密码错误"，不应触发全局登出。
+  if (response.status === 401 && !path.startsWith('/auth/login')) handleUnauthorized()
+
   if (!response.ok) {
     let detail = `请求失败（${response.status}）`
     try {
@@ -225,8 +270,16 @@ export const api = {
   },
 }
 
-export function websocketUrl(callId: string, token: string): string {
+function websocketOrigin(): string {
+  // API_BASE 可能是相对路径（同源部署）或绝对地址（独立 API 域名）。
+  // 后者必须按 API 地址推导，否则信令会连到前端页面所在的域名。
+  if (/^https?:\/\//i.test(API_BASE)) {
+    return API_BASE.replace(/^http/i, 'ws').replace(/\/api$/, '')
+  }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const host = window.location.host
-  return `${protocol}//${host}/ws/calls/${encodeURIComponent(callId)}?token=${encodeURIComponent(token)}`
+  return `${protocol}//${window.location.host}`
+}
+
+export function websocketUrl(callId: string, token: string): string {
+  return `${websocketOrigin()}/ws/calls/${encodeURIComponent(callId)}?token=${encodeURIComponent(token)}`
 }

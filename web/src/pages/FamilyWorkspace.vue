@@ -233,7 +233,7 @@ onMounted(() => { void loadAll() })
 <template>
   <div class="page-content family-page">
     <header class="page-header"><div><h1>家属与社区</h1><p>查看授权家庭的事件、通知和处理时间线。</p></div><div class="family-role"><UsersRound :size="20" />{{ roleLabel[props.user.role] }}</div></header>
-    <div v-if="error" class="notice-bar error" role="alert"><CircleAlert :size="18" />{{ error }}</div>
+    <div v-if="error" class="notice-bar error" role="alert"><CircleAlert :size="18" />{{ error }}<button class="text-button" type="button" @click="loadAll"><RefreshCw :size="16" />重试</button></div>
     <div v-if="notice" class="notice-bar success" role="status"><Check :size="18" />{{ notice }}</div>
     <div v-if="loading" class="page-loading"><LoaderCircle class="spin" :size="32" />正在加载家庭数据…</div>
     <template v-else>

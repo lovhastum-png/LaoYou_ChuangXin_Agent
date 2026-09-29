@@ -26,6 +26,7 @@ const cameraCloseNotice = ref('')
 const now = ref(new Date())
 let clockTimer: number | undefined
 let broadcastTimer: number | undefined
+let pollingBroadcasts = false
 
 const dateLabel = computed(() => formatDate(now.value))
 const greeting = computed(() => `${elder.value?.name || props.user.display_name}，${greetingFor(now.value)}`)
@@ -87,7 +88,9 @@ async function load() {
 }
 
 async function pollBroadcasts() {
-  if (!elder.value || !dashboard.value) return
+  // 15 秒定时器没有重入保护：请求慢于间隔时会并发叠加，越叠越多。
+  if (pollingBroadcasts || !elder.value || !dashboard.value) return
+  pollingBroadcasts = true
   try {
     const [broadcasts, elders] = await Promise.all([api.broadcasts(elder.value.id), api.elders()])
     dashboard.value.broadcasts = broadcasts
@@ -95,6 +98,8 @@ async function pollBroadcasts() {
     if (current) { elder.value = current; dashboard.value.elder = current }
   } catch {
     // The dashboard remains usable when the optional broadcast poll fails.
+  } finally {
+    pollingBroadcasts = false
   }
 }
 

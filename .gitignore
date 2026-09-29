@@ -14,4 +14,9 @@ android/local.properties
 artifacts/*.apk
 artifacts/*.zip
 artifacts/windows/
+# QA 截图是二进制证据，留在工作区即可，不进版本库。
+artifacts/qa/
+# 文档生成流水线的中间产物（用 doc 目录下的源 Markdown 可完整重建）。
+output/
+.workbuddy/
 .DS_Store

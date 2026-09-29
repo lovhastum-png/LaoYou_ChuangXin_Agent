@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
@@ -84,35 +85,54 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.Locale
 
 private enum class AppTab { HOME, EVENTS, REMINDERS, CALLS, ESCORTS, SETTINGS }
 
+/**
+ * 把异常翻译成老人看得懂的中文。
+ *
+ * 直接用 e.message 会把 "Failed to connect to /192.168.1.100:18080" 这类英文原文
+ * 显示在界面上；后端返回的 ApiException.detail 本来就是中文，原样透传。
+ */
+private fun friendlyMessage(e: Exception): String {
+    return when (e) {
+        is ApiException -> e.message ?: "操作没有成功，请重试。"
+        is UnknownHostException -> "找不到这台电脑，请检查服务地址是否填写正确。"
+        is ConnectException -> "连接不上电脑，请确认电脑已启动老友，且手机和电脑在同一个网络。"
+        is SocketTimeoutException -> "网络有点慢，请稍后重试。"
+        else -> "操作没有成功，请检查网络后重试。"
+    }
+}
+
 private val LaoyouColors = lightColorScheme(
-    primary = Color(0xFF1E6B45),
+    primary = Color(0xFF165198),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFC7E9D0),
-    onPrimaryContainer = Color(0xFF002110),
-    secondary = Color(0xFF4B6352),
+    primaryContainer = Color(0xFFE8F1FB),
+    onPrimaryContainer = Color(0xFF0F3D73),
+    secondary = Color(0xFF37485C),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFCDE9D1),
-    onSecondaryContainer = Color(0xFF082012),
-    tertiary = Color(0xFF41665A),
+    secondaryContainer = Color(0xFFE3EDFA),
+    onSecondaryContainer = Color(0xFF37485C),
+    tertiary = Color(0xFF37485C),
     onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFC3E9D7),
-    onTertiaryContainer = Color(0xFF002117),
-    background = Color(0xFFF7FBF7),
+    tertiaryContainer = Color(0xFFE3EDFA),
+    onTertiaryContainer = Color(0xFF0F3D73),
+    background = Color(0xFFF7F9FC),
     surface = Color.White,
-    surfaceVariant = Color(0xFFDFEAE0),
+    surfaceVariant = Color(0xFFDEE4EC),
     surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFF3F8F3),
-    surfaceContainer = Color(0xFFEDF4ED),
-    surfaceContainerHigh = Color(0xFFE7F0E8),
-    surfaceContainerHighest = Color(0xFFDFEADF),
-    onSurfaceVariant = Color(0xFF405047),
-    outline = Color(0xFF6E7D70),
-    outlineVariant = Color(0xFFC0CBC0),
-    error = Color(0xFFBA1A1A)
+    surfaceContainerLow = Color(0xFFF3F6FA),
+    surfaceContainer = Color(0xFFEDF1F7),
+    surfaceContainerHigh = Color(0xFFE7ECF3),
+    surfaceContainerHighest = Color(0xFFDFE5EC),
+    onSurfaceVariant = Color(0xFF37485C),
+    outline = Color(0xFF6980A2),
+    outlineVariant = Color(0xFF7D95B8),
+    error = Color(0xFF922E1E)
 )
 
 class MainActivity : ComponentActivity() {
@@ -183,7 +203,7 @@ private fun LaoyouApp() {
                 val result = withContext(Dispatchers.IO) { action() }
                 onSuccess(result)
             } catch (e: Exception) {
-                error = e.message ?: "请求失败，请检查服务地址和网络"
+                error = friendlyMessage(e)
                 onFailure(e)
             } finally {
                 loading = false
@@ -301,7 +321,7 @@ private fun LaoyouApp() {
         if (api != null && selectedElder != null) refreshDashboard()
     }
 
-    MaterialTheme(colorScheme = LaoyouColors, typography = MaterialTheme.typography.copy(bodyLarge = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp))) {
+    MaterialTheme(colorScheme = LaoyouColors, typography = MaterialTheme.typography.copy(bodyLarge = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp))) {
         when {
             user == null -> LoginScreen(
                 baseUrl = baseUrl,
@@ -535,6 +555,10 @@ private fun LoginScreen(
     error: String?,
     onLogin: () -> Unit
 ) {
+    val context = LocalContext.current
+    val isDebuggable = remember(context) {
+        (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    }
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 28.dp, vertical = 48.dp),
@@ -543,7 +567,7 @@ private fun LoginScreen(
             Text("老友", fontSize = 38.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Text("子女与社区照护", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(10.dp))
-            Text("登录后可查看已关联家人的老人、事件和通知。首次使用请填写电脑总控的地址。", color = Color(0xFF455A64))
+            Text("登录后可查看已关联家人的老人、事件和通知。首次使用请填写电脑总控的地址。", color = Color(0xFF37485C))
             Spacer(Modifier.height(24.dp))
             OutlinedTextField(
                 value = baseUrl,
@@ -566,7 +590,22 @@ private fun LoginScreen(
                 else Text("登录", fontSize = 18.sp)
             }
             Spacer(Modifier.height(18.dp))
-            Text("本地演示账号：elder / child / community / admin；密码均为 Laoyou123!", fontSize = 14.sp, color = Color(0xFF546E7A))
+            // 明文 HTTP 是局域网演示的既有前提；这里把风险讲清楚，避免用户
+            // 在不可信网络里输入口令。
+            Text(
+                "提示：本应用通过局域网明文连接电脑上的老友服务，仅请在可信的家庭或办公网络中使用。",
+                fontSize = 16.sp,
+                color = Color(0xFF884005)
+            )
+            // 演示口令只在 debug 构建里显示；打包出去的 release 不该印出任何口令。
+            if (isDebuggable) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "本地演示账号：elder / child / community / admin；密码见服务端启动提示。",
+                    fontSize = 16.sp,
+                    color = Color(0xFF37485C)
+                )
+            }
         }
     }
 }
@@ -584,7 +623,7 @@ private fun ElderPickerScreen(
     Scaffold(topBar = { TopAppBar(title = { Text("选择老人") }, actions = { TextButton(onClick = onLogout) { Text("退出") } }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(20.dp)) {
             Text("你好，${user.displayName}（${roleLabel(user.role)}）", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Text("当前账号可访问以下家庭成员", color = Color(0xFF546E7A), modifier = Modifier.padding(top = 6.dp, bottom = 16.dp))
+            Text("当前账号可访问以下家庭成员", color = Color(0xFF37485C), modifier = Modifier.padding(top = 6.dp, bottom = 16.dp))
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (error != null) Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp))
             if (elders.isEmpty() && !loading) Text("当前账号还没有可查看的家人，请检查家庭或社区关联。")
@@ -664,7 +703,7 @@ private fun AppShell(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Column { Text(elder.name); Text(roleLabel(user.role), fontSize = 13.sp, color = Color(0xFF546E7A)) } },
+                title = { Column { Text(elder.name); Text(roleLabel(user.role), fontSize = 16.sp, color = Color(0xFF37485C)) } },
                 actions = {
                     TextButton(onClick = onSwitchElder) { Text("换老人") }
                     TextButton(onClick = onLogout) { Text("退出") }
@@ -680,7 +719,7 @@ private fun AppShell(
                 if (user.role == "community" || user.role == "admin") add(AppTab.ESCORTS to "陪诊")
                 add(AppTab.SETTINGS to "设置")
             }
-            NavigationBar(containerColor = Color(0xFFF0F7F0)) {
+            NavigationBar(containerColor = Color(0xFFF0F4FA)) {
                 tabs.forEach { (tab, label) ->
                     NavigationBarItem(selected = currentTab == tab, onClick = { onTab(tab) }, icon = { Text(tabIcon(tab), fontSize = 20.sp) }, label = { Text(label) })
                 }
@@ -752,7 +791,7 @@ private fun HomeScreen(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("健康与照护概览", fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                Text("查看家人的健康记录；每条记录都会标明来源。", color = Color(0xFF546E7A))
+                Text("查看家人的健康记录；每条记录都会标明来源。", color = Color(0xFF37485C))
             }
             OutlinedButton(onClick = onRefresh, enabled = !loading) { Text("刷新") }
         }
@@ -768,7 +807,7 @@ private fun HomeScreen(
                         }
                         Text("${weather.temperature}  ${weather.description}", fontSize = 23.sp, modifier = Modifier.padding(top = 8.dp))
                         Text(weather.advice, modifier = Modifier.padding(top = 6.dp))
-                        Text("观测：${formatTime(weather.observedAt)}", fontSize = 13.sp, color = Color(0xFF607D8B), modifier = Modifier.padding(top = 8.dp))
+                        Text("观测：${formatTime(weather.observedAt)}", fontSize = 16.sp, color = Color(0xFF37485C), modifier = Modifier.padding(top = 8.dp))
                     }
                 }
             }
@@ -779,11 +818,11 @@ private fun HomeScreen(
                     if (latest == null) Text("暂无最新观测。尚未接入设备时没有实时数据；演示记录会标为模拟来源。", modifier = Modifier.padding(top = 8.dp))
                     else {
                         Text(observationLabel(latest), fontSize = 19.sp, modifier = Modifier.padding(top = 8.dp))
-                        Text("时间 ${formatTime(latest.occurredAt)} · 来源 ${sourceLabel(latest.source)}", color = Color(0xFF546E7A), fontSize = 14.sp)
-                        latest.location?.let { Text("位置：$it", fontSize = 14.sp) }
+                        Text("时间 ${formatTime(latest.occurredAt)} · 来源 ${sourceLabel(latest.source)}", color = Color(0xFF37485C), fontSize = 16.sp)
+                        latest.location?.let { Text("位置：$it", fontSize = 16.sp) }
                     }
                     Text("当前活跃异常：${dashboard.activeEventCount} 条", modifier = Modifier.padding(top = 10.dp), fontWeight = FontWeight.SemiBold)
-                    if (observations.isNotEmpty()) Text("最近观测 ${observations.size} 条已同步", color = Color(0xFF546E7A), fontSize = 14.sp)
+                    if (observations.isNotEmpty()) Text("最近观测 ${observations.size} 条已同步", color = Color(0xFF37485C), fontSize = 16.sp)
                 }
             }
             Card(Modifier.fillMaxWidth()) {
@@ -792,10 +831,10 @@ private fun HomeScreen(
                     if (!elder.cameraEnabled) {
                         Text("摄像头已关闭，系统不会接收摄像头监控推断。", modifier = Modifier.padding(top = 8.dp))
                     } else {
-                        Text("每次手动读取一帧；非实时视频。", color = Color(0xFF546E7A), modifier = Modifier.padding(top = 6.dp))
+                        Text("每次手动读取一帧；非实时视频。", color = Color(0xFF37485C), modifier = Modifier.padding(top = 6.dp))
                         snapshot?.let { bitmap ->
                             Image(bitmap.asImageBitmap(), contentDescription = "老人摄像头快照", modifier = Modifier.fillMaxWidth().height(220.dp).padding(top = 10.dp), contentScale = ContentScale.Crop)
-                            Text("本次获取：${snapshotAt?.let(::formatTime) ?: "未知"} · 非实时视频快照", fontSize = 13.sp, color = Color(0xFF607D8B), modifier = Modifier.padding(top = 5.dp))
+                            Text("本次获取：${snapshotAt?.let(::formatTime) ?: "未知"} · 非实时视频快照", fontSize = 16.sp, color = Color(0xFF37485C), modifier = Modifier.padding(top = 5.dp))
                         }
                         OutlinedButton(onClick = onLoadSnapshot, enabled = !snapshotLoading, modifier = Modifier.padding(top = 10.dp)) {
                             if (snapshotLoading) CircularProgressIndicator(Modifier.size(18.dp)) else Text("读取最新快照")
@@ -806,7 +845,7 @@ private fun HomeScreen(
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(18.dp)) {
                     Text("你好通通 · 文字等价入口", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("可以查询天气、健康和提醒；未配置的能力会明确提示。", color = Color(0xFF546E7A), fontSize = 14.sp, modifier = Modifier.padding(top = 5.dp))
+                    Text("可以查询天气、健康和提醒；未配置的能力会明确提示。", color = Color(0xFF37485C), fontSize = 16.sp, modifier = Modifier.padding(top = 5.dp))
                     OutlinedTextField(assistantText, { assistantText = it }, label = { Text("例如：查天气、查询提醒、每天晚上八点提醒我吃药") }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
                     Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                         Button(onClick = { if (assistantText.isNotBlank()) { onAssistant(assistantText.trim(), null); assistantText = "" } }, enabled = assistantText.isNotBlank()) { Text("发送") }
@@ -814,9 +853,9 @@ private fun HomeScreen(
                     assistantResult?.let { result ->
                         HorizontalDivider(Modifier.padding(vertical = 10.dp))
                         Text(result.reply, fontSize = 17.sp)
-                        Text("服务：${assistantModeLabel(result.mode)} · ${assistantActionLabel(result.action)}", fontSize = 13.sp, color = Color(0xFF607D8B), modifier = Modifier.padding(top = 5.dp))
+                        Text("服务：${assistantModeLabel(result.mode)} · ${assistantActionLabel(result.action)}", fontSize = 16.sp, color = Color(0xFF37485C), modifier = Modifier.padding(top = 5.dp))
                         result.confirmToken?.let { token ->
-                            Text("为避免误操作，请确认后再执行。", color = Color(0xFF8A4B08), modifier = Modifier.padding(top = 6.dp))
+                            Text("为避免误操作，请确认后再执行。", color = Color(0xFF884005), modifier = Modifier.padding(top = 6.dp))
                             Button(onClick = { onAssistant("确认", token) }, modifier = Modifier.padding(top = 6.dp)) { Text("确认执行") }
                         }
                     }
@@ -826,7 +865,7 @@ private fun HomeScreen(
                 Column(Modifier.padding(18.dp)) {
                     Text("提醒与播报", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Text("启用提醒：${dashboard.reminders.count { it.enabled }} 条；今日播报：${dashboard.broadcasts.size} 条", modifier = Modifier.padding(top = 8.dp))
-                    Text("APP运行期间每30秒轮询通知并尝试发本地通知；APP被系统终止后不保证后台提醒。", color = Color(0xFF546E7A), fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+                    Text("APP运行期间每30秒轮询通知并尝试发本地通知；APP被系统终止后不保证后台提醒。", color = Color(0xFF37485C), fontSize = 16.sp, modifier = Modifier.padding(top = 8.dp))
                 }
             }
         }
@@ -839,7 +878,7 @@ private fun EventsScreen(events: List<Event>, onRefresh: () -> Unit, onOpen: (St
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("异常事件", fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                Text("查看处理进展和每次通知结果。", color = Color(0xFF546E7A))
+                Text("查看处理进展和每次通知结果。", color = Color(0xFF37485C))
             }
             OutlinedButton(onClick = onRefresh) { Text("刷新") }
         }
@@ -861,7 +900,7 @@ private fun EventCard(event: Event, onOpen: (String) -> Unit) {
                 AssistChip(onClick = {}, label = { Text(eventSeverityLabel(event.severity)) })
             }
             Text(event.description, modifier = Modifier.padding(top = 7.dp))
-            Text("${eventStatusLabel(event.status)} · ${formatTime(event.createdAt)} · ${sourceLabel(event.source)}", fontSize = 14.sp, color = Color(0xFF546E7A), modifier = Modifier.padding(top = 8.dp))
+            Text("${eventStatusLabel(event.status)} · ${formatTime(event.createdAt)} · ${sourceLabel(event.source)}", fontSize = 16.sp, color = Color(0xFF37485C), modifier = Modifier.padding(top = 8.dp))
         }
     }
 }
@@ -887,7 +926,7 @@ private fun EventDetailScreen(
             AssistChip(onClick = {}, label = { Text(eventStatusLabel(detail.event.status)) })
         }
         Text(detail.event.description)
-        Text("来源：${sourceLabel(detail.event.source)} · 创建：${formatTime(detail.event.createdAt)}", fontSize = 14.sp, color = Color(0xFF546E7A))
+        Text("来源：${sourceLabel(detail.event.source)} · 创建：${formatTime(detail.event.createdAt)}", fontSize = 16.sp, color = Color(0xFF37485C))
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Text("处置", fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -903,7 +942,7 @@ private fun EventDetailScreen(
                 if ((role == "community" || role == "admin") && detail.event.kind in setOf("heart_rate", "blood_pressure") && detail.event.status != "resolved" && detail.event.status != "false_positive") {
                     OutlinedButton(onClick = { showUnavailableDialog = true }, modifier = Modifier.padding(top = 10.dp)) { Text("社区无法协助，转放心医") }
                 }
-                if (!canHandle && !canCorrect) Text("当前账号只能查看，不能处置或修正事件。", color = Color(0xFF546E7A), modifier = Modifier.padding(top = 10.dp))
+                if (!canHandle && !canCorrect) Text("当前账号只能查看，不能处置或修正事件。", color = Color(0xFF37485C), modifier = Modifier.padding(top = 10.dp))
             }
         }
         Card(Modifier.fillMaxWidth()) {
@@ -913,7 +952,7 @@ private fun EventDetailScreen(
                 detail.timeline.forEach { item ->
                     Column(Modifier.padding(top = 12.dp)) {
                         Text("${timelineNodeLabel(item.node)} · ${formatTime(item.at)}", fontWeight = FontWeight.SemiBold)
-                        Text("${if (item.actor == "system") "系统" else roleLabel(item.actor)}：${item.detail}", fontSize = 15.sp)
+                        Text("${if (item.actor == "system") "系统" else roleLabel(item.actor)}：${item.detail}", fontSize = 16.sp)
                     }
                 }
             }
@@ -928,8 +967,8 @@ private fun EventDetailScreen(
                             Text(notificationTargetLabel(notification.target), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                             Text(notificationStatusLabel(notification.status))
                         }
-                            Text("${notificationStatusLabel(notification.status)} · ${if (notification.simulated) "模拟接入" else "真实通道"} · 尝试 ${notification.attempts} 次 · 创建 ${formatTime(notification.createdAt)}", fontSize = 14.sp, color = Color(0xFF546E7A))
-                        notification.lastError?.let { Text("失败原因：$it", color = MaterialTheme.colorScheme.error, fontSize = 14.sp) }
+                            Text("${notificationStatusLabel(notification.status)} · ${if (notification.simulated) "模拟接入" else "真实通道"} · 尝试 ${notification.attempts} 次 · 创建 ${formatTime(notification.createdAt)}", fontSize = 16.sp, color = Color(0xFF37485C))
+                        notification.lastError?.let { Text("失败原因：$it", color = MaterialTheme.colorScheme.error, fontSize = 16.sp) }
                         Row {
                             if ((role == "admin" || (role == "child" && notification.target == "child") || (role == "community" && notification.target == "community")) && notification.status == "sent") {
                                 TextButton(onClick = { onAckNotification(notification.id) }) { Text("确认收到") }
@@ -985,12 +1024,12 @@ private fun RemindersScreen(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("用药提醒", fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                Text("时间严格按每天 HH:mm 保存，名称和剂量由家属录入。", color = Color(0xFF546E7A))
+                Text("时间严格按每天 HH:mm 保存，名称和剂量由家属录入。", color = Color(0xFF37485C))
             }
             OutlinedButton(onClick = onRefresh) { Text("刷新") }
         }
         if (canEdit) Button(onClick = { editing = null; showForm = true }, modifier = Modifier.padding(top = 10.dp)) { Text("新增提醒") }
-        else Text("社区账号只读。", color = Color(0xFF546E7A), modifier = Modifier.padding(top = 12.dp))
+        else Text("社区账号只读。", color = Color(0xFF37485C), modifier = Modifier.padding(top = 12.dp))
         if (reminders.isEmpty()) Text("暂无提醒记录。", modifier = Modifier.padding(top = 12.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 10.dp)) {
             items(reminders, key = { it.id }) { reminder ->
@@ -998,7 +1037,7 @@ private fun RemindersScreen(
                     Column(Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(reminder.title, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            Text(if (reminder.enabled) "启用" else "停用", color = if (reminder.enabled) Color(0xFF246B3B) else Color(0xFF607D8B))
+                            Text(if (reminder.enabled) "启用" else "停用", color = if (reminder.enabled) Color(0xFF165198) else Color(0xFF37485C))
                         }
                         Text("${reminder.time} · ${reminder.medicine} · ${reminder.dose}", modifier = Modifier.padding(top = 6.dp))
                     }
@@ -1046,12 +1085,12 @@ private fun CallsScreen(role: String, calls: List<CallModel>, onRefresh: () -> U
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("视频通话", fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                Text("与家人视频通话，接通后可使用摄像头和麦克风。", color = Color(0xFF546E7A))
+                Text("与家人视频通话，接通后可使用摄像头和麦克风。", color = Color(0xFF37485C))
             }
             OutlinedButton(onClick = onRefresh) { Text("刷新") }
         }
         if (canCall) Button(onClick = onStart, modifier = Modifier.padding(top = 10.dp)) { Text("发起视频通话") }
-        else Text("社区账号可查看授权信息，但没有通话参与权限。", color = Color(0xFF546E7A), modifier = Modifier.padding(top = 12.dp))
+        else Text("社区账号可查看授权信息，但没有通话参与权限。", color = Color(0xFF37485C), modifier = Modifier.padding(top = 12.dp))
         if (calls.isEmpty()) Text("暂无通话记录。", modifier = Modifier.padding(top = 12.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 10.dp)) {
             items(calls, key = { it.id }) { call ->
@@ -1061,7 +1100,7 @@ private fun CallsScreen(role: String, calls: List<CallModel>, onRefresh: () -> U
                             Text(callStatusLabel(call.status), fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                             if (call.status == "ringing" || call.status == "active") Text("打开")
                         }
-                        Text("创建：${formatTime(call.createdAt)}", fontSize = 14.sp, color = Color(0xFF546E7A), modifier = Modifier.padding(top = 6.dp))
+                        Text("创建：${formatTime(call.createdAt)}", fontSize = 16.sp, color = Color(0xFF37485C), modifier = Modifier.padding(top = 6.dp))
                     }
                 }
             }
@@ -1178,7 +1217,7 @@ private fun EscortsScreen(escorts: List<Escort>, onRefresh: () -> Unit, onAction
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("陪诊工单", fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                Text("放心医陪诊服务为模拟接入，申请、接单和完成进展会显示在这里。", color = Color(0xFF546E7A))
+                Text("放心医陪诊服务为模拟接入，申请、接单和完成进展会显示在这里。", color = Color(0xFF37485C))
             }
             OutlinedButton(onClick = onRefresh) { Text("刷新") }
         }
@@ -1192,7 +1231,7 @@ private fun EscortsScreen(escorts: List<Escort>, onRefresh: () -> Unit, onAction
                             if (escort.status == "requested") Button(onClick = { onAction(escort, "accept", null) }) { Text("接单") }
                             if (escort.status == "accepted") Button(onClick = { completing = escort }) { Text("完成") }
                         }
-                        Text("申请：${formatTime(escort.requestedAt)} · ${if (escort.simulated) "模拟接入" else "真实平台"}", fontSize = 14.sp, color = Color(0xFF546E7A), modifier = Modifier.padding(top = 6.dp))
+                        Text("申请：${formatTime(escort.requestedAt)} · ${if (escort.simulated) "模拟接入" else "真实平台"}", fontSize = 16.sp, color = Color(0xFF37485C), modifier = Modifier.padding(top = 6.dp))
                         escort.note?.let { Text("备注：$it", modifier = Modifier.padding(top = 5.dp)) }
                     }
                 }
@@ -1220,7 +1259,7 @@ private fun SettingsScreen(
     val canEdit = role == "child" || role == "admin" || role == "elder"
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("家庭与服务设置", fontSize = 25.sp, fontWeight = FontWeight.Bold)
-        Text("社区账号只读；可用服务会显示当前状态。", color = Color(0xFF546E7A))
+        Text("社区账号只读；可用服务会显示当前状态。", color = Color(0xFF37485C))
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(18.dp)) {
                 Text("摄像头", fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -1228,7 +1267,7 @@ private fun SettingsScreen(
                     Text(if (elder.cameraEnabled) "已开启" else "已关闭", modifier = Modifier.weight(1f))
                     Switch(checked = elder.cameraEnabled, onCheckedChange = { checked -> if (!canEdit) Unit else if (!checked) confirmCameraOff = true else onUpdateSettings(true, null, null) }, enabled = canEdit)
                 }
-                Text("关闭需要二次确认；已保存快照会被清除，摄像头监控也会停止。", fontSize = 14.sp, color = Color(0xFF546E7A))
+                Text("关闭需要二次确认；已保存快照会被清除，摄像头监控也会停止。", fontSize = 16.sp, color = Color(0xFF37485C))
             }
         }
         Card(Modifier.fillMaxWidth()) {
@@ -1239,7 +1278,7 @@ private fun SettingsScreen(
                     Switch(checked = elder.voiceEnabled, onCheckedChange = { if (canEdit) onUpdateSettings(null, it, null) }, enabled = canEdit)
                 }
                 Text("当前方言：${elder.dialect}", modifier = Modifier.padding(top = 8.dp))
-                Text("方言能力会标明可用状态；系统普通话识别不会冒充方言。", fontSize = 14.sp, color = Color(0xFF546E7A), modifier = Modifier.padding(top = 4.dp))
+                Text("方言能力会标明可用状态；系统普通话识别不会冒充方言。", fontSize = 16.sp, color = Color(0xFF37485C), modifier = Modifier.padding(top = 4.dp))
             }
         }
         capabilities?.let { cap ->
@@ -1249,7 +1288,7 @@ private fun SettingsScreen(
                     Text("助手：${assistantModeLabel(cap.assistantMode)}")
                     Text("语音：${speechProviderLabel(cap.speechProvider)} · ${if (cap.speechConfigured) "可用" else "未配置"}")
                     Text("视频：${videoModeLabel(cap.videoMode)}")
-                    cap.dialects.forEach { dialect -> Text("${dialect.label}：${if (dialect.available) "可用" else "不可用"} · ${dialect.note}", fontSize = 14.sp, color = Color(0xFF546E7A), modifier = Modifier.padding(top = 4.dp)) }
+                    cap.dialects.forEach { dialect -> Text("${dialect.label}：${if (dialect.available) "可用" else "不可用"} · ${dialect.note}", fontSize = 16.sp, color = Color(0xFF37485C), modifier = Modifier.padding(top = 4.dp)) }
                 }
             }
         }

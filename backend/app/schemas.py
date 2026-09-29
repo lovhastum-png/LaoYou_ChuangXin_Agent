@@ -48,6 +48,9 @@ class Rules(BaseModel):
     def validate_heart_range(self) -> "Rules":
         if self.heart_rate_low >= self.heart_rate_high:
             raise ValueError("heart_rate_low 必须小于 heart_rate_high")
+        if self.night_start == self.night_end:
+            # 两端相同时 is_night 恒为假，夜间徘徊规则会静默失效。
+            raise ValueError("night_start 与 night_end 不能相同，否则夜间规则不会生效")
         return self
 
 

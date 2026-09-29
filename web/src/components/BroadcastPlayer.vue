@@ -109,7 +109,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.broadcast-player { display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:12px 20px; background:#edf5ef; border-bottom:1px solid var(--line); color:var(--green-deep); font-size:20px; line-height:1.5; }
-.broadcast-player > span { flex:1; min-width:180px; }
+/* 令牌化：原来的 background 是写死的 #EDF4FC、字号写死 20px，深色模式下这条
+   播报栏会一直保持浅色，字号也不会跟随「字号档位」。现改回令牌与 rem。 */
+.broadcast-player { display:flex; flex-wrap:wrap; gap:var(--sp-12); align-items:center; padding:var(--sp-12) var(--sp-20); background:var(--brand-soft); border-bottom:1px solid var(--line); color:var(--brand-deep); font-size:1.25rem; line-height:1.5; }
+/* 用 rem 而非 px：特大字号档位下换行位置才不会塌在一起 */
+.broadcast-player > span { flex:1; min-width:11.25rem; }
 .broadcast-player button { min-height:48px; }
 </style>

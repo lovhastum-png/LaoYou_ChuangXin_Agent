@@ -17,7 +17,8 @@ const presets: Array<{ role: Role; label: string; username: string; description:
 
 const selectedRole = ref<Role>('elder')
 const username = ref('elder')
-const password = ref('Laoyou123!')
+// 不再预填演示口令：构建产物里的任何口令都等同于公开凭据。
+const password = ref('')
 const busy = ref(false)
 const error = ref('')
 
@@ -31,6 +32,9 @@ function choose(role: Role) {
 }
 
 async function submit() {
+  // 表单的 @submit 会被回车触发，按钮 disabled 拦不住；这里短路避免重复登录
+  // （每次登录都会在服务端新建一个会话）。
+  if (busy.value) return
   error.value = ''
   busy.value = true
   try {
@@ -101,7 +105,7 @@ async function submit() {
           </button>
         </form>
 
-        <p class="login-note">本地演示账号可在上方选择，密码由服务端校验。</p>
+        <p class="login-note">本地演示账号可在上方选择。演示口令见服务端启动提示或《安装使用与维护》，对外部署请先设置 LAOYOU_DEMO_PASSWORD 或关闭演示账号。</p>
       </div>
     </section>
   </div>

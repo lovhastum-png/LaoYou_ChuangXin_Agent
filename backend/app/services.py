@@ -512,7 +512,9 @@ def schedule_due_broadcasts(
     # Dashboard polling and the background scheduler share this transaction lock.
     # A persisted checkpoint covers a missed minute without replaying old schedules
     # when a reminder is newly created or moved to an earlier time today.
-    db.execute(sql_text("SELECT pg_advisory_xact_lock(1279348569)"))
+    # SQLite（本地预览）无此函数，依赖唯一键保证幂等。
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(sql_text("SELECT pg_advisory_xact_lock(1279348569)"))
     checkpoint = db.get(DemoConfig, "scheduler_checkpoint")
     previous = to_utc(datetime.fromisoformat(checkpoint.value["at"])) if checkpoint else minute_mark.astimezone(timezone.utc)
     window_start = min(previous, minute_mark.astimezone(timezone.utc))

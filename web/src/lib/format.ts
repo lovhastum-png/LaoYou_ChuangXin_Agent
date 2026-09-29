@@ -73,7 +73,8 @@ export function observationValue(observation: Observation): string {
     if (observation.duration_minutes !== null && observation.duration_minutes !== undefined) return `${observation.duration_minutes} 分钟`
     return '已记录'
   }
-  if (typeof observation.value === 'object') return JSON.stringify(observation.value)
+  // 未知结构不把原始 JSON 显示给老人看（例如 {"foo":1}），改为业务化文案。
+  if (typeof observation.value === 'object') return '已记录'
   return String(observation.value)
 }
 

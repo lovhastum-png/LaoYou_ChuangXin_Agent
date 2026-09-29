@@ -49,8 +49,37 @@ async function decline() {
   finally { busy.value = false }
 }
 
-onMounted(() => { void poll(); timer = window.setInterval(() => { void poll() }, 5000) })
-onBeforeUnmount(() => { disposed = true; if (timer) window.clearInterval(timer) })
+const INCOMING_POLL_MS = 5000
+
+function startTimer() {
+  if (timer === undefined) timer = window.setInterval(() => { void poll() }, INCOMING_POLL_MS)
+}
+
+function stopTimer() {
+  if (timer !== undefined) { window.clearInterval(timer); timer = undefined }
+}
+
+/** 页面在后台时不轮询；回到前台立刻补一次，避免漏掉来电。 */
+function handleVisibility() {
+  if (document.hidden) {
+    stopTimer()
+    return
+  }
+  void poll()
+  startTimer()
+}
+
+onMounted(() => {
+  void poll()
+  startTimer()
+  document.addEventListener('visibilitychange', handleVisibility)
+})
+
+onBeforeUnmount(() => {
+  disposed = true
+  stopTimer()
+  document.removeEventListener('visibilitychange', handleVisibility)
+})
 </script>
 
 <template>
@@ -69,7 +98,8 @@ onBeforeUnmount(() => { disposed = true; if (timer) window.clearInterval(timer) 
 </template>
 
 <style scoped>
-.incoming-call { color:var(--green-deep); }
-.incoming-call h2 { font-size:30px; margin:16px 0; }
-.incoming-call p { font-size:22px; line-height:1.5; }
+/* 字号与间距改为 rem / --sp-*，跟随字号档位与密度档位 */
+.incoming-call { color:var(--brand-deep); }
+.incoming-call h2 { font-size:1.875rem; margin:var(--sp-16) 0; }
+.incoming-call p { font-size:1.375rem; line-height:1.5; }
 </style>

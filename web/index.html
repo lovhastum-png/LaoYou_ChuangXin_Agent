@@ -3,9 +3,50 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f8f8f4" />
+    <meta name="theme-color" content="#F7F9FC" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>老友｜通通陪着您</title>
+    <script>
+      /* 首屏防闪：必须在样式表之前同步执行。
+         外观偏好存在 localStorage 里，若不在这里就把 data-theme / data-mode
+         写到 <html> 上，浏览器会先用默认主题画一帧、再被 JS 改掉 ——
+         对老人屏来说那一下闪烁观感很差，所以宁可内联一小段。
+         这段逻辑与 src/lib/theme/index.ts 的 loadPrefs/applyPrefs 同源，
+         任一侧改动都要同步另一侧（键名与倍率取自 FONT_TIERS/DENSITIES/CORNERS）。 */
+      ;(function () {
+        var el = document.documentElement
+        var p = null
+        try {
+          p = JSON.parse(localStorage.getItem('laoyou.appearance.v1') || 'null')
+        } catch (e) {
+          /* 隐私模式或存储被禁：直接走默认值 */
+        }
+        var FONT = { small: 0.9, standard: 1, large: 1.12, xlarge: 1.25 }
+        var DENSITY = { compact: 0.85, standard: 1, roomy: 1.15 }
+        var CORNER = { sharp: 0.3, standard: 1, round: 1.6 }
+        var theme = p && typeof p.theme === 'string' ? p.theme : 'azure'
+        var mode = p && (p.mode === 'light' || p.mode === 'dark') ? p.mode : 'auto'
+        if (mode === 'auto') {
+          mode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light'
+        }
+        el.dataset.theme = theme
+        el.dataset.mode = mode
+        el.style.setProperty('--font-scale', String(FONT[p && p.font] || 1))
+        el.style.setProperty('--density', String(DENSITY[p && p.density] || 1))
+        el.style.setProperty('--radius-scale', String(CORNER[p && p.corner] || 1))
+        /* 自定义主色没有静态 CSS 可选，令牌由 index.ts 在运行时求解。
+           为避免首屏按默认主题画一帧再跳色，求解结果在保存时一并落盘，
+           这里直接铺上去。没有这一段也不影响正确性，只会闪一下。 */
+        if (theme === 'custom' && p && p.resolved && p.resolved[mode]) {
+          var toks = p.resolved[mode]
+          for (var k in toks) {
+            if (Object.prototype.hasOwnProperty.call(toks, k)) el.style.setProperty(k, toks[k])
+          }
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

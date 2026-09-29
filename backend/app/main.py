@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from contextlib import asynccontextmanager
@@ -24,7 +25,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
 from .db import SessionLocal, check_database, engine, get_db, init_db, settings
@@ -190,6 +191,44 @@ def _commit(db: Session) -> None:
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail="数据冲突，请重试") from exc
+    except DataError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=422, detail="提交的数据不符合要求，请检查长度或格式"
+        ) from exc
+
+
+REMINDER_FIELD_LIMITS = {"title": 128, "medicine": 128, "dose": 128}
+TIME_VALUE_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+
+def _validated_reminder_proposal(proposal: dict[str, Any]) -> dict[str, Any]:
+    """校验助手提出的提醒字段。
+
+    REST 写入路径由 ReminderCreate 兜底，助手确认路径以前直接把解析结果塞进模型，
+    药名超过列长度时只能在数据库层报错（500）。这里前置校验，与 REST 侧保持一致。
+    """
+    cleaned: dict[str, Any] = {}
+    for field, limit in REMINDER_FIELD_LIMITS.items():
+        raw = proposal.get(field) or ""
+        if not isinstance(raw, str):
+            raise HTTPException(status_code=422, detail=f"提醒字段 {field} 格式不正确")
+        raw = raw.strip()
+        if len(raw) > limit:
+            raise HTTPException(
+                status_code=422, detail=f"提醒{field}超过 {limit} 个字符，请缩短后再确认"
+            )
+        cleaned[field] = raw
+    if not cleaned["medicine"]:
+        raise HTTPException(status_code=422, detail="没有识别到药名，请重新描述")
+    if not cleaned["title"]:
+        cleaned["title"] = f"{cleaned['medicine']}提醒"
+    time_value = proposal.get("time")
+    if not isinstance(time_value, str) or not TIME_VALUE_PATTERN.match(time_value):
+        raise HTTPException(status_code=422, detail="提醒时间格式不正确")
+    cleaned["time"] = time_value
+    cleaned["enabled"] = bool(proposal.get("enabled", True))
+    return cleaned
 
 
 class CallHub:
@@ -262,10 +301,88 @@ async def lifespan(app: FastAPI):
         engine.dispose()
 
 
+class _BodyTooLargeError(Exception):
+    """请求体超过全局上限，用于在读取阶段中断。"""
+
+
+async def _send_payload_too_large(send) -> None:
+    payload = json.dumps(
+        {"detail": "请求体过大，请缩小内容后重试"}, ensure_ascii=False
+    ).encode("utf-8")
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 413,
+            "headers": [
+                (b"content-type", b"application/json; charset=utf-8"),
+                (b"content-length", str(len(payload)).encode("ascii")),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": payload})
+
+
+class BodySizeLimitMiddleware:
+    """在读取请求体之前拦住超限请求。
+
+    Starlette 默认不限制正文大小，而 ``await request.body()`` 会把整个正文缓冲进
+    内存，长度校验发生在缓冲之后。低配机器上，超大正文足以在进入业务代码前就打满
+    内存。这里先用 Content-Length 快速拒绝，再在流式接收时按实际字节数兜底
+    （覆盖 chunked / 无 Content-Length 的请求）。
+    """
+
+    def __init__(self, app, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        for name, value in scope.get("headers") or []:
+            if name == b"content-length":
+                try:
+                    declared = int(value)
+                except ValueError:
+                    break
+                if declared > self.max_bytes:
+                    await _send_payload_too_large(send)
+                    return
+                break
+
+        seen = 0
+        response_started = False
+
+        async def guarded_receive():
+            nonlocal seen
+            message = await receive()
+            if message.get("type") == "http.request":
+                seen += len(message.get("body", b""))
+                if seen > self.max_bytes:
+                    raise _BodyTooLargeError
+            return message
+
+        async def guarded_send(message):
+            nonlocal response_started
+            if message.get("type") == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, guarded_receive, guarded_send)
+        except _BodyTooLargeError:
+            # 响应尚未开始时才能安全改写成 413；已经开始就只能中断连接，
+            # 否则会在响应流中间插入状态行。
+            if not response_started:
+                await _send_payload_too_large(send)
+
+
 app = FastAPI(title="老友后端", version="1.0.0", lifespan=lifespan)
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=list(settings.cors_origins),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -491,12 +608,18 @@ def list_broadcasts(
 def mark_broadcast_played(
     broadcast_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
-    item = db.get(Broadcast, broadcast_id)
+    # 回传方只有老人端（契约第 3 节）；管理员保留用于演示排查。
+    if user.role not in {"elder", "admin"}:
+        raise HTTPException(status_code=403, detail="只有老人端可以回传播报状态")
+    item = (
+        db.query(Broadcast)
+        .filter(Broadcast.id == broadcast_id)
+        .with_for_update()
+        .one_or_none()
+    )
     if item is None:
         raise HTTPException(status_code=404, detail="播报不存在")
-    elder = load_elder(db, user, item.elder_id, forbidden_status=403)
-    if user.role not in {"elder", "child", "admin"}:
-        raise HTTPException(status_code=403, detail="无权确认播报")
+    load_elder(db, user, item.elder_id, forbidden_status=403)
     if item.played_at is None:
         item.played_at = utcnow()
         _commit(db)
@@ -584,7 +707,9 @@ def list_events(
 def _get_visible_event(db: Session, user: User, event_id: str, *, lock: bool = False) -> Event:
     query = _event_query_for_user(db, user).filter(Event.id == event_id)
     if lock:
-        query = query.with_for_update()
+        # 查询 join 了 elders，未指定 OF 时 PostgreSQL 会连 elders 行一起锁住，
+        # 与"先锁 elder"的流程互相等待。只锁事件行本身。
+        query = query.with_for_update(of=Event)
     row = query.one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="事件不存在或不可见")
@@ -837,7 +962,9 @@ def assistant(
         token.used_at = utcnow()
         proposal = dict(token.proposal)
         if token.action == "reminder_create":
-            reminder = Reminder(elder_id=elder.id, **proposal)
+            reminder = Reminder(
+                elder_id=elder.id, **_validated_reminder_proposal(proposal)
+            )
             db.add(reminder)
             db.flush()
             _commit(db)
@@ -1009,8 +1136,15 @@ def capabilities() -> dict[str, Any]:
     }
 
 
-def _get_call_for_user(db: Session, user: User, call_id: str, *, hide: bool = True) -> Call:
-    call = db.get(Call, call_id)
+def _get_call_for_user(
+    db: Session, user: User, call_id: str, *, hide: bool = True, lock: bool = False
+) -> Call:
+    # 写路径必须带行锁：answer/end/decline 并发时会各自基于旧状态写入，
+    # 终态取决于提交顺序。
+    if lock:
+        call = db.query(Call).filter(Call.id == call_id).with_for_update().one_or_none()
+    else:
+        call = db.get(Call, call_id)
     if call is None:
         raise HTTPException(status_code=404, detail="通话不存在")
     elder = db.get(Elder, call.elder_id)
@@ -1054,7 +1188,7 @@ def call_action(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    item = _get_call_for_user(db, user, call_id, hide=False)
+    item = _get_call_for_user(db, user, call_id, hide=False, lock=True)
     now = utcnow()
     if payload.action == "answer":
         if item.status == "active":
