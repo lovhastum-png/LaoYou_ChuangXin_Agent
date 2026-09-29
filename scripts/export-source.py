@@ -14,6 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 EXCLUDED_PARTS = {".git", ".venv", "node_modules", "runtime", "tmp", "__pycache__", ".pytest_cache", ".gradle", ".kotlin", "build", "dist"}
 # runtime/ 默认整目录不导出（含本机凭据与抓拍），只放行可公开的环境变量模板。
 ALLOWED_IN_EXCLUDED = {"runtime/local.env.example"}
+# 分端源码包都带上的共有文件：协议，以及全项目统一的环境变量模板
+# （start.ps1 读的就是它，各端按文档配置时都要照抄）。
+SHARED_FILES = {"LICENSE", "runtime/local.env.example"}
 SECRET_SUFFIXES = {".keystore", ".jks", ".pem", ".key"}
 REPOSITORY = "https://github.com/lovhastum-png/LaoYou_ChuangXin_Agent"
 
@@ -29,7 +32,7 @@ def export(destination: Path, component: str = "all") -> int:
     files: list[tuple[Path, Path]] = []
     for name in sorted(set(listing.split("\0")) - {""}):
         relative = Path(name)
-        if component != "all" and relative.parts[0] != component and relative.name != "LICENSE":
+        if component != "all" and relative.parts[0] != component and relative.as_posix() not in SHARED_FILES:
             continue
         if relative.parts[0] == "artifacts" and not (relative.parts[1:2] == ("qa",) or relative.name == "build.json"):
             continue
