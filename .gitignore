@@ -1,6 +1,16 @@
 tmp/
-runtime/
+# runtime/ 存本机运行配置与凭据；只放行可公开的环境变量模板，其余不进版本库。
+# 必须写成 runtime/* 而不是 runtime/：写成 runtime/ 会把目录整体排除，下面的放行规则失效。
+runtime/*
+!runtime/local.env.example
 backend/.venv/
+# 跌倒检测侧车的独立虚拟环境（含 torch，约 1-2GB，可用 requirements.txt 重建）。
+backend/pose/.venv/
+# 跌倒检测的权重与样本不进公开仓库：权重（yolov8n-pose.pt）是 AGPL-3.0，
+# 由 ultralytics 首次运行自动下载；样本是 URFD，仅限学术用途，
+# 用 backend/pose/dataset_download.py 重建。
+backend/pose/models/*.pt
+backend/pose/samples/
 __pycache__/
 *.pyc
 .pytest_cache/
