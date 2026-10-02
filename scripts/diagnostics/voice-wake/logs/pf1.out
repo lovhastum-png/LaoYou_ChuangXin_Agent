@@ -1,0 +1,21 @@
+>>> 已登录老人首页
+
+### lang=zh-CN wav=tmp/cmn_wake_loud.wav
+   1.0s onspeechstart
+   3.4s [FINAL] [{"t":"","c":0}]
+   4.1s [interim] [{"t":"你","c":0.01}]
+   4.3s [interim] [{"t":"你好","c":0.01}]
+   4.3s [interim] [{"t":"你好通","c":0.01}]
+   4.5s [interim] [{"t":"你好通通","c":0.01}]
+   5.0s [interim] [{"t":"你好通通","c":0.9}]
+   5.1s [interim] [{"t":"你好通通今","c":0.01}]
+   5.2s [interim] [{"t":"你好通通今天","c":0.01}]
+   5.3s [interim] [{"t":"你好通通今天天","c":0.01}]
+   5.3s [interim] [{"t":"你好通通今天天气","c":0.01}]
+   5.8s [interim] [{"t":"你好通通今天天气怎么","c":0.01}]
+   5.8s [interim] [{"t":"你好通通今天天气怎么样","c":0.01}]
+   6.4s [interim] [{"t":"你好通通今天天气怎么样","c":0.9}]
+   8.6s error:aborted
+
+### lang=zh-HK wav=tmp/yue_wake_loud.wav
+   0.6s error:aborted

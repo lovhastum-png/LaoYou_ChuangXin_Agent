@@ -1,0 +1,13 @@
+### mode=headless wav=D:/实验室项目/LaoYou_ChuangXin_Agent/tmp/cmn_wake.wav lang=zh-CN
+page ok: 老友｜通通陪着您
+RESULT = {
+  "ok": true,
+  "log": [
+    "onstart",
+    "onaudiostart",
+    "onsoundstart",
+    "onspeechstart",
+    "result[F]:[\"\"]",
+    "result[F]:[\"\"]"
+  ]
+}

@@ -1,0 +1,17 @@
+### 外放拾音实测, wav = D:\实验室项目\LaoYou_ChuangXin_Agent\tmp\yue_wake.wav
+登录页: 老友｜通通陪着您
+已提交登录
+老人首页就绪
+[进入首页] {"wakeBtnText":"开启语音唤醒","wakeSpans":["首次开启需要允许麦克风"],"panelOpen":false,"messages":[],"tools":null}
+[开启唤醒后] {"wakeBtnText":"关闭语音唤醒","wakeSpans":["正在聆听，说“你好通通”即可唤醒"],"panelOpen":false,"messages":[],"tools":null}
+>>> 准备外放粤语音频
+[播放粤语后] {"wakeBtnText":"关闭语音唤醒","wakeSpans":["正在聆听，说“你好通通”即可唤醒"],"panelOpen":false,"messages":[],"tools":null}
+[轮询+1.8s] {"wakeBtnText":"关闭语音唤醒","wakeSpans":["正在聆听，说“你好通通”即可唤醒"],"panelOpen":false,"messages":[],"tools":null}
+[轮询+3.6s] {"wakeBtnText":"关闭语音唤醒","wakeSpans":["正在聆听，说“你好通通”即可唤醒"],"panelOpen":false,"messages":[],"tools":null}
+[轮询+5.4s] {"wakeBtnText":"关闭语音唤醒","wakeSpans":["正在聆听，说“你好通通”即可唤醒"],"panelOpen":false,"messages":[],"tools":null}
+[轮询+7.2s] {"wakeBtnText":"关闭语音唤醒","wakeSpans":["正在聆听，说“你好通通”即可唤醒"],"panelOpen":false,"messages":[],"tools":null}
+[轮询+9s] {"wakeBtnText":"关闭语音唤醒","wakeSpans":["正在聆听，说“你好通通”即可唤醒"],"panelOpen":false,"messages":[],"tools":null}
+[轮询+10.8s] {"wakeBtnText":"关闭语音唤醒","wakeSpans":["正在聆听，说“你好通通”即可唤醒"],"panelOpen":false,"messages":[],"tools":null}
+=== 判定 ===
+助手面板是否被唤醒触发: false
+截图 -> tmp/yue_live_result.png
