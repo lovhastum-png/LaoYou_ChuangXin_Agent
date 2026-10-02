@@ -1,0 +1,36 @@
+// 老友 · Gradle 国内镜像加速（首次构建/无缓存时用）
+//
+// 为什么需要它：本机访问 services.gradle.org 与 dl.google.com 都要走代理，实测
+// 只有约 1MB/分钟级别；而这个工程要拉 AGP 8.13.2 + Kotlin 2.2.21 + Compose，
+// 首次构建有几百 MB 依赖，走代理会耗掉数小时。阿里云镜像实测 5~10MB/s。
+//
+// 用法（不改动仓库里的 settings.gradle.kts）：
+//   cd android
+//   ./gradlew --init-script ../scripts/gradle-cn-mirrors.init.gradle :app:assembleDebug
+//
+// Android Studio 里不会自动生效。如果希望全局生效（影响本机所有 Gradle 项目），
+// 把本文件复制成 ~/.gradle/init.d/mirrors.gradle 即可。
+//
+// 注意：这里必须**清空后重建**仓库列表，不能只是追加。
+// Gradle 按顺序逐个仓库找模块，若 google()/mavenCentral() 仍排在前面，
+// 每个模块都会先去 dl.google.com 撞一次（走代理，极慢），镜像等于没起作用。
+
+def cnMirrors = [
+    'https://maven.aliyun.com/repository/google',        // Google Maven（AGP、AndroidX）
+    'https://maven.aliyun.com/repository/public',        // Maven Central + JCenter
+    'https://maven.aliyun.com/repository/gradle-plugin', // Gradle Plugin Portal
+]
+
+settingsEvaluated { settings ->
+    def pluginRepos = settings.pluginManagement.repositories
+    pluginRepos.clear()
+    cnMirrors.each { mirrorUrl ->
+        pluginRepos.maven { url = mirrorUrl }
+    }
+
+    def depsRepos = settings.dependencyResolutionManagement.repositories
+    depsRepos.clear()
+    cnMirrors.each { mirrorUrl ->
+        depsRepos.maven { url = mirrorUrl }
+    }
+}

@@ -15,9 +15,9 @@
         android:usesCleartextTraffic="true">
         <!--
           usesCleartextTraffic 保留为 true：局域网演示必须能连电脑上的 http:// 服务，
-          而局域网 IP 无法申请证书。已知风险：登录口令与 Bearer 令牌在同一 Wi-Fi 内
-          可被嗅探。应用登录页已给出"仅在可信网络使用"的提示；正式对外部署应改为
-          HTTPS 并改回 networkSecurityConfig 白名单方案。
+          而局域网 IP 无法申请证书（该链路口令与 Bearer 令牌在同一 Wi-Fi 内可被嗅探）。
+          跨网络访问走 Cloudflare Tunnel 的 https 地址，端点证书由 Cloudflare 签发，
+          不需要这项开关，登录页也已提示填 https 公网地址。
         -->
         <activity
             android:name=".MainActivity"

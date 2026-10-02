@@ -16,6 +16,8 @@ class Settings:
     weather_timeout_seconds: float = 3.0
     db_connect_timeout: int = 5
     max_request_body_bytes: int = 4 * 1024 * 1024
+    call_ring_timeout_seconds: int = 90
+    turn_ttl_seconds: int = 3600
     seed_demo: bool = True
     demo_password: str = DEMO_PASSWORD_DEFAULT
     cors_origins: tuple[str, ...] = ("*",)
@@ -58,6 +60,10 @@ def load_settings() -> Settings:
         max_request_body_bytes=max(
             64 * 1024, int(os.getenv("LAOYOU_MAX_BODY_BYTES", str(4 * 1024 * 1024)))
         ),
+        call_ring_timeout_seconds=max(
+            10, int(os.getenv("LAOYOU_CALL_RING_TIMEOUT", "90"))
+        ),
+        turn_ttl_seconds=max(300, int(os.getenv("LAOYOU_TURN_TTL", "3600"))),
         seed_demo=os.getenv("LAOYOU_SEED_DEMO", "1").strip().lower()
         not in {"0", "false", "no"},
         demo_password=demo_password,

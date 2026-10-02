@@ -39,10 +39,22 @@ def client():
     session_local = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     with session_local.begin() as db:
         seed_demo_data(db)
-    app.dependency_overrides[get_db] = lambda: session_local()
-    with TestClient(app) as test_client:
-        yield test_client
-    app.dependency_overrides.clear()
+
+    def override_get_db():
+        db = session_local()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    # 不要用 `with TestClient(app)`：那会触发 lifespan → init_db，
+    # 连到真实的 DATABASE_URL（本模块按约定不需要本地 PostgreSQL）。
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
 
 
 def _login(client: TestClient, username: str) -> tuple[dict, str]:

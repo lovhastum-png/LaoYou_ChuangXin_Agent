@@ -74,6 +74,7 @@ from .services import (
     event_detail_dict,
     event_dict,
     escort_dict,
+    expire_stale_ringing_calls,
     fetch_weather,
     health_broadcast_text,
     weather_broadcast_text,
@@ -273,6 +274,9 @@ def _scheduler_tick() -> None:
     try:
         with SessionLocal.begin() as db:
             schedule_due_broadcasts(db, app_settings=settings)
+            expired = expire_stale_ringing_calls(db, settings.call_ring_timeout_seconds)
+            if expired:
+                logger.info("清理超时未接听通话 %s 条", expired)
     except Exception as exc:
         # A scheduler failure must not terminate the API process. The next
         # tick retries, and the unique key keeps successful ticks idempotent.
@@ -1276,6 +1280,25 @@ def capabilities() -> dict[str, Any]:
     }
 
 
+@app.get("/api/ice-servers")
+def ice_servers(user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """下发通话用的 ICE 配置。
+
+    跨网络通话需要 TURN 中继，但 TURN key 只保留在后端；这里下发按 TTL
+    换来的短期凭据。没有配置 TURN 时返回公共 STUN，局域网行为与改造前一致。
+    """
+    del user  # 依赖完成鉴权；未登录不得拿中继凭据。
+    from .integrations import cloudflare_turn
+
+    try:
+        servers, source = cloudflare_turn.fetch_ice_servers(settings.turn_ttl_seconds)
+    except cloudflare_turn.TurnServiceError as exc:
+        # 配置或上游故障按显式错误上报，不静默降级成"看起来能打通"。
+        logger.warning("TURN 凭据获取失败：%s", exc)
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return {"iceServers": servers, "source": source}
+
+
 def _get_call_for_user(
     db: Session, user: User, call_id: str, *, hide: bool = True, lock: bool = False
 ) -> Call:
@@ -1300,6 +1323,9 @@ def create_call(
     elder = load_elder(db, user, elder_id, forbidden_status=403, lock=True)
     if user.role not in {"elder", "child", "admin"}:
         raise HTTPException(status_code=403, detail="只有老人或子女可以发起通话")
+    # 惰性清理：调度周期之外的超时 ringing 不能堵死新通话的幂等去重。
+    if expire_stale_ringing_calls(db, settings.call_ring_timeout_seconds):
+        db.flush()
     active = db.query(Call).filter(Call.elder_id == elder.id, Call.status.in_(["ringing", "active"])).first()
     if active:
         return call_dict(active)
@@ -1315,6 +1341,10 @@ def list_calls(
     elder_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> list[dict[str, Any]]:
     elder = load_elder(db, user, elder_id)
+    # 来电轮询每 5 秒经过这里，惰性清理保证超时 ringing 不会一直显示为来电；
+    # 与播报列表触发调度同理，该 GET 不是纯只读接口。
+    if expire_stale_ringing_calls(db, settings.call_ring_timeout_seconds):
+        _commit(db)
     return [
         call_dict(item)
         for item in db.query(Call).filter(Call.elder_id == elder.id).order_by(Call.created_at.desc()).limit(200).all()
@@ -1387,19 +1417,37 @@ async def calls_ws(websocket: WebSocket, call_id: str, token: str | None) -> Non
         # 双方都收到 rendezvous 信号；offer 端收到后再开始发送 offer。
         async with call_hub.lock:
             peer_count = len(call_hub.rooms.get(call_id, set()))
+        logger.info("通话信令加入：call=%s user=%s 房间人数=%s", call_id, user.id, peer_count)
         if peer_count == 2:
             peer_ready = {"type": "peer_ready", "payload": {}}
             await websocket.send_json(peer_ready)
             await call_hub.broadcast(call_id, websocket, peer_ready)
         while True:
             message = await websocket.receive_json()
-            if not isinstance(message, dict) or message.get("type") not in {"offer", "answer", "candidate"}:
-                await websocket.send_json({"type": "error", "detail": "只支持 offer、answer、candidate 信令"})
+            if not isinstance(message, dict) or message.get("type") not in {
+                "offer",
+                "answer",
+                "candidate",
+                "media_state",
+                "ping",
+            }:
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "detail": "只支持 offer、answer、candidate、media_state、ping 信令",
+                    }
+                )
+                continue
+            if message["type"] == "ping":
+                # 经 Cloudflare 转发的空闲 WebSocket 约 100 秒会被边缘切断，
+                # 通话中段又恰好没有信令。只回本端，保活同时不打扰对端房间。
+                await websocket.send_json({"type": "pong", "payload": {}})
                 continue
             payload = message.get("payload")
             if not isinstance(payload, dict):
                 await websocket.send_json({"type": "error", "detail": "信令 payload 必须是对象"})
                 continue
+            logger.info("通话信令转发：call=%s user=%s type=%s", call_id, user.id, message["type"])
             await call_hub.broadcast(call_id, websocket, {"type": message["type"], "payload": payload})
     except WebSocketDisconnect:
         pass
@@ -1411,6 +1459,12 @@ async def calls_ws(websocket: WebSocket, call_id: str, token: str | None) -> Non
             pass
     finally:
         await call_hub.leave(call_id, websocket)
+        # 通知仍在房间的对端本端已掉线（正常挂断同样会触发；对端的状态
+        # 轮询会在数秒内拿到 ended 并收尾，peer_left 只承担即时提示）。
+        try:
+            await call_hub.broadcast(call_id, websocket, {"type": "peer_left", "payload": {}})
+        except Exception:
+            pass
         db.close()
 
 

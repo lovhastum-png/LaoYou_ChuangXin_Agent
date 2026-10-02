@@ -23,6 +23,12 @@ const REQUEST_TIMEOUT_MS = 15_000
 /** 会话失效时广播，由 App.vue 监听后回登录页。 */
 export const UNAUTHORIZED_EVENT = 'laoyou:unauthorized'
 
+/** `GET /ice-servers` 的返回；source 说明凭据来源，便于排查"是不是走了中继"。 */
+export interface IceServersResponse {
+  iceServers: RTCIceServer[]
+  source: 'cloudflare_turn' | 'static' | 'stun_only'
+}
+
 let unauthorizedNotified = false
 
 export class ApiError extends Error {
@@ -264,6 +270,15 @@ export const api = {
   },
   call(callId: string, authToken?: string): Promise<Call> {
     return request(`/calls/${encodeURIComponent(callId)}`, {}, authToken)
+  },
+  /**
+   * 通话前取 ICE 配置。
+   *
+   * 跨网络通话需要 TURN 中继，凭据由后端按 TTL 下发（TURN key 不下发到
+   * 浏览器）；未配置 TURN 时后端返回公共 STUN，局域网行为不变。
+   */
+  iceServers(authToken?: string): Promise<IceServersResponse> {
+    return request('/ice-servers', {}, authToken)
   },
   createCall(elderId: string): Promise<Call> {
     return json(`/elders/${encodeURIComponent(elderId)}/calls`, 'POST')

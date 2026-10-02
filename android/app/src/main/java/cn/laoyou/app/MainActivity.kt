@@ -102,7 +102,7 @@ private fun friendlyMessage(e: Exception): String {
     return when (e) {
         is ApiException -> e.message ?: "操作没有成功，请重试。"
         is UnknownHostException -> "找不到这台电脑，请检查服务地址是否填写正确。"
-        is ConnectException -> "连接不上电脑，请确认电脑已启动老友，且手机和电脑在同一个网络。"
+        is ConnectException -> "连接不上电脑，请确认电脑已启动老友。同一个网络填电脑的局域网地址；不同网络请填 Cloudflare 公网地址。"
         is SocketTimeoutException -> "网络有点慢，请稍后重试。"
         else -> "操作没有成功，请检查网络后重试。"
     }
@@ -152,7 +152,13 @@ private fun LaoyouApp() {
     // Do not prefill the emulator-only address on a real phone.  The packaged
     // desktop service is reached through the computer's LAN address (usually
     // port 18080), while instrumentation still supplies its own test URL.
-    var baseUrl by rememberSaveable { mutableStateOf(prefs.getString("base_url", "") ?: "") }
+    // 打包时若在 android/local.properties 配了 laoyou.baseUrl，就用它预填，
+    // 装好打开即可直接登录；用户改过之后以本地保存的地址为准（本地优先）。
+    var baseUrl by rememberSaveable {
+        mutableStateOf(
+            prefs.getString("base_url", "").orEmpty().ifBlank { BuildConfig.DEFAULT_BASE_URL }
+        )
+    }
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var api by remember { mutableStateOf<ApiClient?>(null) }
@@ -574,7 +580,16 @@ private fun LoginScreen(
                 onValueChange = onBaseUrlChange,
                 label = { Text("服务地址") },
                 placeholder = { Text("例如：http://192.168.1.100:18080") },
-                supportingText = { Text("APP 会自动补上 /api；模拟器可填 http://10.0.2.2:8000") },
+                // 预置了地址就直说，避免用户以为还要自己去找电脑IP。
+                supportingText = {
+                    Text(
+                        if (BuildConfig.DEFAULT_BASE_URL.isBlank()) {
+                            "APP 会自动补上 /api。同一网络填电脑局域网地址；不同网络填 Cloudflare 公网 https 地址（如 https://xxx.trycloudflare.com）。模拟器可填 http://10.0.2.2:8000"
+                        } else {
+                            "已预置服务地址，一般不用改；换到别的网络或电脑时可手动修改。APP 会自动补上 /api。"
+                        }
+                    )
+                },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -590,10 +605,10 @@ private fun LoginScreen(
                 else Text("登录", fontSize = 18.sp)
             }
             Spacer(Modifier.height(18.dp))
-            // 明文 HTTP 是局域网演示的既有前提；这里把风险讲清楚，避免用户
-            // 在不可信网络里输入口令。
+            // 局域网地址只能是明文 HTTP，跨网络的 Cloudflare 公网地址是 HTTPS。
+            // 这里把风险讲清楚，避免用户在不可信网络里输入口令。
             Text(
-                "提示：本应用通过局域网明文连接电脑上的老友服务，仅请在可信的家庭或办公网络中使用。",
+                "提示：填局域网地址时是明文连接，仅请在可信的家庭或办公网络中使用；不同网络请用 Cloudflare 公网 https 地址，链路已加密。",
                 fontSize = 16.sp,
                 color = Color(0xFF884005)
             )

@@ -1,8 +1,24 @@
+// 注意：脚本里不能写 `java.util.Properties` —— `java` 会被 JavaPluginExtension
+// 的访问器抢占，必须显式 import。
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+// 预置服务地址：打包时把它写进 APK，装好打开就带出来，不用再手填。
+// 取值顺序：-PlaoyouBaseUrl=... > android/local.properties 的 laoyou.baseUrl > 空。
+// 放在 local.properties 是因为它已被 .gitignore 排除，地址属于本机配置；
+// 留空则保持原来的行为（登录页空着，用户必须自己填）。
+val laoyouLocalProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { stream -> load(stream) }
+}
+val laoyouDefaultBaseUrl: String =
+    (project.findProperty("laoyouBaseUrl") as? String)?.trim()?.takeIf { it.isNotEmpty() }
+        ?: laoyouLocalProperties.getProperty("laoyou.baseUrl", "").trim()
 
 android {
     namespace = "cn.laoyou.app"
@@ -15,6 +31,11 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField(
+            "String",
+            "DEFAULT_BASE_URL",
+            "\"${laoyouDefaultBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+        )
     }
 
     signingConfigs.getByName("debug") {
@@ -40,6 +61,9 @@ android {
     }
     buildFeatures {
         compose = true
+        // 预置服务地址通过 BuildConfig.DEFAULT_BASE_URL 传给登录页；
+        // AGP 8 起默认关闭 BuildConfig 生成，必须显式打开。
+        buildConfig = true
     }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
