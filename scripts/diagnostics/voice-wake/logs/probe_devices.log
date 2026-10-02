@@ -1,0 +1,24 @@
+{
+  "devices": [
+    {
+      "kind": "audioinput",
+      "label": "默认 - 麦克风阵列 (Realtek(R) Audio)",
+      "id": "default"
+    },
+    {
+      "kind": "audioinput",
+      "label": "通讯 - 麦克风阵列 (Realtek(R) Audio)",
+      "id": "communicatio"
+    },
+    {
+      "kind": "audioinput",
+      "label": "麦克风阵列 (Realtek(R) Audio)",
+      "id": "b70d6f36971c"
+    }
+  ],
+  "error": null,
+  "getUserMediaError": null,
+  "trackLabel": [
+    "默认 - 麦克风阵列 (Realtek(R) Audio)"
+  ]
+}

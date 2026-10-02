@@ -210,6 +210,23 @@ def call_dict(item: Call) -> dict[str, Any]:
     }
 
 
+def expire_stale_ringing_calls(db: Session, timeout_seconds: int, *, now: datetime | None = None) -> int:
+    """把超时未接听的 ringing 通话置为 ended，返回清理条数。
+
+    ringing 没有自然终结者：无人接听且两端都不显式挂断时会永久残留，
+    而 create_call 的幂等去重会一直命中这条僵尸记录，导致该老人无法再
+    发起新通话。调度周期清理之外，创建/列表路径也惰性调用本函数兜底。
+    语义复用 ended（不新增状态），由 ended_at 与缺失的 answered_at 表达"未接通"。
+    """
+    moment = now or utcnow()
+    cutoff = moment - timedelta(seconds=timeout_seconds)
+    stale = db.query(Call).filter(Call.status == "ringing", Call.created_at < cutoff).all()
+    for item in stale:
+        item.status = "ended"
+        item.ended_at = moment
+    return len(stale)
+
+
 def get_demo_fail_targets(db: Session) -> set[str]:
     config = db.get(DemoConfig, "notification_fail_targets")
     if not config or not isinstance(config.value, list):

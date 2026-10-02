@@ -195,4 +195,18 @@ export interface Call {
   ended_at: string | null
 }
 
+// 通话 WS 信令消息（契约见 doc/01-子文档/11-接口契约.md 第 7 节）。
+// offer/answer/candidate/media_state 由客户端发出并转发给对端；
+// peer_ready/peer_left/error 只由服务端发出。
+export type CallSignalMessage =
+  | { type: 'offer'; payload: RTCSessionDescriptionInit }
+  | { type: 'answer'; payload: RTCSessionDescriptionInit }
+  | { type: 'candidate'; payload: RTCIceCandidateInit }
+  | { type: 'media_state'; payload: { audio?: boolean; video?: boolean } }
+  | { type: 'peer_ready'; payload?: Record<string, never> }
+  | { type: 'peer_left'; payload?: Record<string, never> }
+  | { type: 'ping'; payload?: Record<string, never> }
+  | { type: 'pong'; payload?: Record<string, never> }
+  | { type: 'error'; detail?: string }
+
 export type NavRoute = 'home' | 'reminders' | 'calls' | 'health' | 'safety' | 'family'

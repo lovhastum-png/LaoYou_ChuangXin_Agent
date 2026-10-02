@@ -1,0 +1,10 @@
+
+### 默认约束(含AEC)
+  静默基线 : {"appliedSettings":{"echoCancellation":true,"noiseSuppression":true,"autoGainControl":true},"peak":0.10876,"avg":0.01222,"samples":41}
+  >>> 外放音频
+  播放中   : {"appliedSettings":{"echoCancellation":true,"noiseSuppression":true,"autoGainControl":true},"peak":0.26334,"avg":0.04531,"samples":57}
+
+### 关闭AEC/降噪/AGC
+  静默基线 : {"appliedSettings":{"echoCancellation":false,"noiseSuppression":false,"autoGainControl":false},"peak":0.04113,"avg":0.01033,"samples":41}
+  >>> 外放音频
+  播放中   : {"appliedSettings":{"echoCancellation":false,"noiseSuppression":false,"autoGainControl":false},"peak":0.04609,"avg":0.01138,"samples":60}

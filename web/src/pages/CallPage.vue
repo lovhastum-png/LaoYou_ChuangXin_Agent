@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Camera, CameraOff, CircleAlert, LoaderCircle, Mic, MicOff, PhoneOff, RefreshCw, Video } from 'lucide-vue-next'
 import { ApiError, api, getToken, websocketUrl } from '../lib/api'
-import type { User } from '../types'
+import type { CallSignalMessage, User } from '../types'
 
 const props = defineProps<{
   callId: string
@@ -25,12 +25,64 @@ const error = ref('')
 const micMuted = ref(false)
 const cameraOff = ref(false)
 const remoteReady = ref(false)
+const remoteMicMuted = ref(false)
+const remoteCameraOff = ref(false)
 const initiator = ref(Boolean(props.initiator))
 const signalingQueue: string[] = []
 let callStateTimer: number | undefined
+let reconnectTimer: number | undefined
+let reconnectAttempts = 0
+let socketWasOpen = false
+const MAX_RECONNECT_ATTEMPTS = 8
 let disposed = false
 const pendingCandidates: RTCIceCandidateInit[] = []
 const signalingToken = computed(() => props.routeToken || getToken())
+
+// 通话页原先写死公共 STUN：局域网能直接打洞，跨网络（家庭宽带 + 4G、两端都在
+// NAT 之后）经常不通，需要 TURN 中继。ICE 配置改由后端下发，TURN key 只留在
+// 服务端。拉取失败保留公共 STUN，局域网行为与改造前一致。
+const FALLBACK_ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
+let iceServers: RTCIceServer[] = FALLBACK_ICE_SERVERS
+let iceServersRequest: Promise<void> | null = null
+
+function loadIceServers(): Promise<void> {
+  if (iceServersRequest) return iceServersRequest
+  const token = signalingToken.value
+  // 没有凭证时不发请求：401 会触发全局登出提示，而这种情况本来就该用
+  // 公共 STUN 兜底。
+  iceServersRequest = token
+    ? (async () => {
+        try {
+          const config = await api.iceServers(token)
+          if (Array.isArray(config.iceServers) && config.iceServers.length) iceServers = config.iceServers
+        } catch {
+          // 保留公共 STUN，不因为这一个请求失败让通话整体不可用。
+        }
+      })()
+    : Promise.resolve()
+  return iceServersRequest
+}
+
+// Cloudflare 对空闲 WebSocket 约 100 秒就切断（免费与 Pro 套餐一致）。通话
+// 中段本来没有信令，靠应用层 ping 保活，否则远端会被误判为掉线重连。
+const HEARTBEAT_INTERVAL_MS = 25_000
+let heartbeatTimer: number | undefined
+
+function startHeartbeat() {
+  stopHeartbeat()
+  heartbeatTimer = window.setInterval(() => {
+    if (socket.value?.readyState === WebSocket.OPEN) {
+      socket.value.send(JSON.stringify({ type: 'ping', payload: {} }))
+    }
+  }, HEARTBEAT_INTERVAL_MS)
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer !== undefined) {
+    window.clearInterval(heartbeatTimer)
+    heartbeatTimer = undefined
+  }
+}
 
 function permissionMessage(cause: unknown): string {
   if (cause instanceof DOMException) {
@@ -47,7 +99,7 @@ function setError(message: string) {
   statusText.value = '通话无法建立'
 }
 
-function sendSignal(message: { type: 'offer' | 'answer' | 'candidate'; payload: object }) {
+function sendSignal(message: Extract<CallSignalMessage, { type: 'offer' | 'answer' | 'candidate' | 'media_state' }>) {
   const encoded = JSON.stringify(message)
   if (socket.value?.readyState === WebSocket.OPEN) socket.value.send(encoded)
   else signalingQueue.push(encoded)
@@ -62,17 +114,17 @@ async function makeOffer() {
   if (!peer.value) return
   const offer = await peer.value.createOffer()
   await peer.value.setLocalDescription(offer)
-  sendSignal({ type: 'offer', payload: offer as unknown as object })
+  sendSignal({ type: 'offer', payload: { sdp: offer.sdp, type: offer.type } })
 }
 
 function setupPeer() {
   const connection = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    iceServers,
   })
   peer.value = connection
   localStream.value?.getTracks().forEach((track) => connection.addTrack(track, localStream.value as MediaStream))
   connection.onicecandidate = (event) => {
-    if (event.candidate) sendSignal({ type: 'candidate', payload: event.candidate.toJSON() as object })
+    if (event.candidate) sendSignal({ type: 'candidate', payload: event.candidate.toJSON() })
   }
   connection.ontrack = (event) => {
     const [remoteStream] = event.streams
@@ -101,45 +153,105 @@ function setupSocket() {
     const connection = new WebSocket(websocketUrl(props.callId, signalingToken.value))
     socket.value = connection
     connection.onopen = () => {
+      const resumed = socketWasOpen
+      socketWasOpen = true
+      reconnectAttempts = 0
+      startHeartbeat()
+      // 重连后本端 RTCPeerConnection 未处于 connected 就地重建（disconnected
+      // 也可能一去不回）；对端保持原连接，房间重新满员时服务端重发
+      // peer_ready，由重发的 offer 完成再协商。
+      if (resumed && peer.value && peer.value.connectionState !== 'connected') {
+        peer.value.close()
+        setupPeer()
+      }
       flushSignals()
-      state.value = 'connecting'
-      statusText.value = initiator.value ? '已连接，等待家人接听…' : '已连接信令，等待对方画面…'
+      if (state.value === 'waiting' || state.value === 'connecting') {
+        state.value = 'connecting'
+        statusText.value = initiator.value ? '已连接，等待家人接听…' : '已连接信令，等待对方画面…'
+      } else if (state.value === 'active') {
+        statusText.value = resumed ? '信令已恢复，通话继续' : '通话已接通'
+      }
     }
     connection.onmessage = (message) => {
       try {
-        const data = JSON.parse(String(message.data)) as { type: 'peer_ready' | 'offer' | 'answer' | 'candidate'; payload?: RTCSessionDescriptionInit | RTCIceCandidateInit }
+        const data = JSON.parse(String(message.data)) as CallSignalMessage
         void handleSignal(data)
       } catch {
         // Ignore malformed signaling packets; the call status remains visible.
       }
     }
-    connection.onerror = () => setError('通话信令连接失败，请检查网络或服务端状态。')
-    connection.onclose = () => {
-      if (!['ended', 'error'].includes(state.value)) statusText.value = '信令连接已断开'
+    connection.onerror = () => {
+      // 浏览器在 error 之后必然触发 close，重连/终态分类统一在 onclose 处理。
+    }
+    connection.onclose = (event) => {
+      socket.value = null
+      stopHeartbeat()
+      if (disposed || ['ended', 'error'].includes(state.value)) return
+      if (event.code === 4401) {
+        setError('通话凭证已失效，请返回应用重新进入。')
+        return
+      }
+      // 4409：通话终结或房间已满，属终态；3 秒轮询会进一步同步最终状态。
+      if (event.code === 4409) {
+        statusText.value = '通话已结束'
+        return
+      }
+      scheduleReconnect()
     }
   } catch {
-    setError('无法打开通话信令连接。')
+    // 构造 WebSocket 同步失败：已连过说明是网络抖动，交给退避重连；
+    // 从未连过则按配置/地址错误直接报错，不做无意义重试。
+    if (socketWasOpen) scheduleReconnect()
+    else setError('无法打开通话信令连接。')
   }
 }
 
-async function handleSignal(data: { type: 'peer_ready' | 'offer' | 'answer' | 'candidate'; payload?: RTCSessionDescriptionInit | RTCIceCandidateInit }) {
-  if (!peer.value) return
+function scheduleReconnect() {
+  if (reconnectTimer !== undefined) return
+  reconnectAttempts += 1
+  if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+    setError('信令连接多次重连失败，请检查网络后挂断并重新进入通话。')
+    return
+  }
+  const delay = Math.min(1000 * 2 ** (reconnectAttempts - 1), 10000)
+  statusText.value = `信令中断，约 ${Math.max(1, Math.round(delay / 1000))} 秒后自动重连…`
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = undefined
+    if (disposed || ['ended', 'error'].includes(state.value)) return
+    setupSocket()
+  }, delay)
+}
+
+async function handleSignal(data: CallSignalMessage) {
+  // peer_left / media_state 只影响提示层，不依赖 RTCPeerConnection 存在。
+  if (data.type === 'peer_left') {
+    if (!['ended', 'error'].includes(state.value)) statusText.value = '对方连接中断，等待对方恢复…'
+    return
+  }
+  if (data.type === 'media_state') {
+    if (typeof data.payload.audio === 'boolean') remoteMicMuted.value = !data.payload.audio
+    if (typeof data.payload.video === 'boolean') remoteCameraOff.value = !data.payload.video
+    return
+  }
+  if (data.type === 'error' || !peer.value) return
   try {
     if (data.type === 'peer_ready') {
+      // 对端（重新）入房后清掉掉线提示，避免文案停在"对方连接中断"。
+      if (state.value === 'active') statusText.value = '通话已接通'
       if (initiator.value) await makeOffer()
     } else if (data.type === 'offer' && data.payload) {
-      await peer.value.setRemoteDescription(data.payload as RTCSessionDescriptionInit)
+      await peer.value.setRemoteDescription(data.payload)
       while (pendingCandidates.length) await peer.value.addIceCandidate(pendingCandidates.shift() as RTCIceCandidateInit)
       const answer = await peer.value.createAnswer()
       await peer.value.setLocalDescription(answer)
-      sendSignal({ type: 'answer', payload: answer as unknown as object })
+      sendSignal({ type: 'answer', payload: { sdp: answer.sdp, type: answer.type } })
       try { await api.callAction(props.callId, 'answer', signalingToken.value || undefined) } catch (cause) { if (cause instanceof ApiError && cause.status !== 409) throw cause }
     } else if (data.type === 'answer' && data.payload) {
-      await peer.value.setRemoteDescription(data.payload as RTCSessionDescriptionInit)
+      await peer.value.setRemoteDescription(data.payload)
       while (pendingCandidates.length) await peer.value.addIceCandidate(pendingCandidates.shift() as RTCIceCandidateInit)
     } else if (data.type === 'candidate' && data.payload) {
-      if (peer.value.remoteDescription) await peer.value.addIceCandidate(data.payload as RTCIceCandidateInit)
-      else pendingCandidates.push(data.payload as RTCIceCandidateInit)
+      if (peer.value.remoteDescription) await peer.value.addIceCandidate(data.payload)
+      else pendingCandidates.push(data.payload)
     }
   } catch (cause) {
     setError(cause instanceof ApiError ? cause.detail : '通话协商失败，请重新发起。')
@@ -151,6 +263,8 @@ async function start() {
   state.value = 'starting'
   try {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('unsupported')
+    // 与系统授权弹窗并行拉取 ICE 配置，避免串行等待拖慢接通。
+    const iceReady = loadIceServers()
     const media = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     if (disposed) { media.getTracks().forEach(track => track.stop()); return }
     localStream.value = media
@@ -158,6 +272,7 @@ async function start() {
       localVideo.value.srcObject = media
       await localVideo.value.play().catch(() => undefined)
     }
+    await iceReady
     setupPeer()
     setupSocket()
     state.value = 'waiting'
@@ -169,6 +284,12 @@ async function start() {
 }
 
 function stopMedia() {
+  if (reconnectTimer !== undefined) {
+    window.clearTimeout(reconnectTimer)
+    reconnectTimer = undefined
+  }
+  socketWasOpen = false
+  stopHeartbeat()
   localStream.value?.getTracks().forEach((track) => track.stop())
   localStream.value = null
   if (localVideo.value) localVideo.value.srcObject = null
@@ -188,11 +309,18 @@ async function endCall() {
   stopMedia()
 }
 
+function pushMediaState() {
+  const audio = localStream.value?.getAudioTracks()[0]?.enabled ?? false
+  const video = localStream.value?.getVideoTracks()[0]?.enabled ?? false
+  sendSignal({ type: 'media_state', payload: { audio, video } })
+}
+
 function toggleMic() {
   const track = localStream.value?.getAudioTracks()[0]
   if (!track) return
   track.enabled = !track.enabled
   micMuted.value = !track.enabled
+  pushMediaState()
 }
 
 function toggleCamera() {
@@ -200,10 +328,13 @@ function toggleCamera() {
   if (!track) return
   track.enabled = !track.enabled
   cameraOff.value = !track.enabled
+  pushMediaState()
 }
 
 function retry() {
   stopMedia()
+  // 上一次可能正是在拉不到 ICE 配置时失败的，重试时重新取一次。
+  iceServersRequest = null
   void start()
 }
 
@@ -259,8 +390,8 @@ onBeforeUnmount(() => {
   <div class="call-page">
     <header class="call-header"><div class="call-brand">老友 <span>视频通话</span></div><div class="call-header-actions"><span class="call-status" :class="`call-${state}`"><span class="state-dot" />{{ statusText }}</span><button v-if="state === 'ended' && !embedded" class="call-exit" type="button" @click="emit('exit')">返回应用</button></div></header>
     <main class="call-stage">
-      <div class="remote-stage"><video v-show="remoteReady" ref="remoteVideo" class="remote-video" autoplay playsinline aria-label="家人画面" /><div v-if="!remoteReady" class="remote-placeholder"><Video :size="56" /><span>{{ state === 'error' ? '请先解决上方提示的问题' : '等待对方接入画面…' }}</span></div><span class="remote-label">对方画面</span></div>
-      <div class="local-stage"><video v-show="localStream" ref="localVideo" class="local-video" muted autoplay playsinline aria-label="我的画面" /><div v-if="!localStream" class="local-placeholder"><CameraOff :size="28" /></div><span class="local-label">我的画面</span></div>
+      <div class="remote-stage"><video v-show="remoteReady && !remoteCameraOff" ref="remoteVideo" class="remote-video" autoplay playsinline aria-label="家人画面" /><div v-if="remoteReady && remoteCameraOff" class="remote-placeholder"><CameraOff :size="56" /><span>对方已关闭摄像头</span></div><div v-else-if="!remoteReady" class="remote-placeholder"><Video :size="56" /><span>{{ state === 'error' ? '请先解决上方提示的问题' : '等待对方接入画面…' }}</span></div><span class="remote-label">对方画面<template v-if="remoteMicMuted">（已静音）</template></span></div>
+      <div class="local-stage"><video v-show="localStream && !cameraOff" ref="localVideo" class="local-video" muted autoplay playsinline aria-label="我的画面" /><div v-if="!localStream || cameraOff" class="local-placeholder"><CameraOff :size="28" /></div><span class="local-label">我的画面<template v-if="cameraOff">（已关闭）</template></span></div>
       <div v-if="error" class="call-error" role="alert"><CircleAlert :size="22" /><span>{{ error }}</span></div>
     </main>
     <footer class="call-controls"><button class="call-control" :class="{ active: micMuted }" type="button" :disabled="!localStream" :title="micMuted ? '打开麦克风' : '关闭麦克风'" :aria-label="micMuted ? '打开麦克风' : '关闭麦克风'" @click="toggleMic"><MicOff v-if="micMuted" :size="23" /><Mic v-else :size="23" /></button><button class="call-control" :class="{ active: cameraOff }" type="button" :disabled="!localStream" :title="cameraOff ? '打开摄像头' : '关闭摄像头'" :aria-label="cameraOff ? '打开摄像头' : '关闭摄像头'" @click="toggleCamera"><CameraOff v-if="cameraOff" :size="23" /><Camera v-else :size="23" /></button><button class="hangup-button" type="button" @click="endCall"><PhoneOff :size="22" />挂断</button><button v-if="state === 'error'" class="call-control" type="button" title="重试" aria-label="重试" @click="retry"><RefreshCw :size="22" /></button></footer>

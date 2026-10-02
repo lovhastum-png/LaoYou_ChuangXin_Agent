@@ -1,0 +1,16 @@
+### 真实麦克风识别实测 lang=zh-HK wav=D:\实验室项目\LaoYou_ChuangXin_Agent\tmp\yue_wake.wav
+>>> 外放音频
+RESULT = {
+  "ok": true,
+  "log": [
+    "0.0s onstart",
+    "0.4s onaudiostart",
+    "1.0s onsoundstart",
+    "1.0s onspeechstart",
+    "9.1s result[FINAL] [{\"t\":\"\",\"c\":0}]",
+    "11.5s result[interim] [{\"t\":\"我\",\"c\":0.01}]",
+    "11.8s result[interim] [{\"t\":\"我没有\",\"c\":0.01}]",
+    "13.2s result[FINAL] [{\"t\":\"\",\"c\":0}]",
+    "21.2s result[FINAL] [{\"t\":\"\",\"c\":0}]"
+  ]
+}
