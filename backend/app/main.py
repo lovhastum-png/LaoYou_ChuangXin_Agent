@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import json
 import logging
 import re
@@ -52,6 +54,7 @@ from .schemas import (
     EscortAction,
     EventAction,
     LoginRequest,
+    LabelRecognitionRequest,
     NotificationConfig,
     ObservationCreate,
     ReminderCreate,
@@ -544,6 +547,40 @@ def create_reminder(
     db.flush()
     _commit(db)
     return reminder_dict(reminder)
+
+
+@app.post("/api/elders/{elder_id}/reminders/recognize-label")
+def recognize_reminder_label(
+    elder_id: str,
+    payload: LabelRecognitionRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """拍一张药盒照片，认出药名与剂量，回给前端填进提醒表单。
+
+    刻意只识别、不落库：结果仍要经过 ``POST /reminders`` 才能成为真正的提醒，
+    这样模型看错一个字不会直接变成老人的服药安排。
+    照片不写盘，密钥只留在后端。
+    """
+    elder = load_elder(db, user, elder_id)
+    if not can_mutate_elder(user):
+        raise HTTPException(status_code=403, detail="社区不能添加提醒")
+    from .integrations.vlm import LabelRecognitionError, recognize_medicine_label
+
+    raw = payload.image.strip()
+    if raw.startswith("data:"):
+        _, _, raw = raw.partition(",")
+    try:
+        image_bytes = base64.b64decode(raw, validate=False)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="照片格式不正确，请重新拍一张") from exc
+
+    try:
+        result = recognize_medicine_label(image_bytes, settings, actor=user.username)
+    except LabelRecognitionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    result["elder_id"] = elder.id
+    return result
 
 
 def _get_reminder(db: Session, user: User, reminder_id: str, *, mutate: bool = False) -> Reminder:

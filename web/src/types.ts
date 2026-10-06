@@ -62,6 +62,22 @@ export interface Reminder {
   created_at: string
 }
 
+/**
+ * 药盒照片识别结果。
+ * 只用来预填表单，仍须用户核对后保存——识别本身不会写入任何提醒。
+ */
+export interface LabelRecognition {
+  medicine: string
+  dose: string
+  frequency: string
+  raw_text: string
+  confidence: 'high' | 'medium' | 'low' | ''
+  title: string
+  suggested_time: string
+  note: string
+  elder_id: string
+}
+
 export interface Broadcast {
   id: string
   elder_id: string

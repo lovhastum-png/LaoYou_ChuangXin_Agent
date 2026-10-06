@@ -93,6 +93,16 @@ class ReminderPatch(BaseModel):
     enabled: bool | None = None
 
 
+class LabelRecognitionRequest(BaseModel):
+    """药盒照片识别请求。image 接受 data URL 或裸 base64。
+
+    上限 4,000,000 字符是配合全局 4 MB 请求体限制设的：base64 比原图大约 1/3，
+    前端上传前会先把长边缩到 1280，正常只有几百 KB。
+    """
+
+    image: str = Field(min_length=32, max_length=4_000_000)
+
+
 class ObservationCreate(BaseModel):
     kind: Literal[
         "fall",

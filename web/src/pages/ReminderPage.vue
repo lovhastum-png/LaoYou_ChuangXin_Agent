@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { Check, Edit3, LoaderCircle, Plus, RefreshCw, Trash2, X } from 'lucide-vue-next'
+import { Camera, Check, Edit3, LoaderCircle, Plus, RefreshCw, Sparkles, Trash2, X } from 'lucide-vue-next'
 import { ApiError, api } from '../lib/api'
 import { formatClock, formatDateTime } from '../lib/format'
 import type { Elder, Reminder, User } from '../types'
@@ -16,6 +16,10 @@ const notice = ref('')
 const formOpen = ref(false)
 const editingId = ref<string | null>(null)
 const draft = ref({ title: '', medicine: '', dose: '', time: '08:00', enabled: true })
+const fileInput = ref<HTMLInputElement | null>(null)
+const recognizing = ref(false)
+const recognizeHint = ref('')
+const recognizeError = ref('')
 
 const canEdit = computed(() => props.user.role === 'elder' || props.user.role === 'child' || props.user.role === 'admin')
 const pageTitle = computed(() => elder.value ? `${elder.value.name}的用药提醒` : '用药提醒')
@@ -23,6 +27,8 @@ const pageTitle = computed(() => elder.value ? `${elder.value.name}的用药提�
 function resetDraft() {
   draft.value = { title: '', medicine: '', dose: '', time: '08:00', enabled: true }
   editingId.value = null
+  recognizeHint.value = ''
+  recognizeError.value = ''
 }
 
 function beginCreate() {
@@ -41,6 +47,62 @@ function beginEdit(reminder: Reminder) {
 function cancelForm() {
   formOpen.value = false
   resetDraft()
+}
+
+/**
+ * 把手机拍的大照片压到长边 1280 再上传。
+ * 一是省流量、识别更快；二是 base64 会再膨胀约 1/3，原图很容易顶到后端 4MB 的请求体上限。
+ */
+async function shrinkPhoto(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file)
+  try {
+    const scale = Math.min(1, 1280 / Math.max(bitmap.width, bitmap.height))
+    const width = Math.max(1, Math.round(bitmap.width * scale))
+    const height = Math.max(1, Math.round(bitmap.height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('浏览器不支持图片处理')
+    context.drawImage(bitmap, 0, 0, width, height)
+    return canvas.toDataURL('image/jpeg', 0.85)
+  } finally {
+    bitmap.close()
+  }
+}
+
+function pickPhoto() {
+  recognizeHint.value = ''
+  recognizeError.value = ''
+  fileInput.value?.click()
+}
+
+async function onPhotoPicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = '' // 清空，重拍同一张也能再次触发
+  if (!file || !elder.value || recognizing.value) return
+  recognizeHint.value = ''
+  recognizeError.value = ''
+  recognizing.value = true
+  try {
+    const image = await shrinkPhoto(file)
+    const result = await api.recognizeLabel(elder.value.id, image)
+    if (result.medicine) draft.value.medicine = result.medicine
+    if (result.dose) draft.value.dose = result.dose
+    if (result.suggested_time) draft.value.time = result.suggested_time
+    if (result.title) draft.value.title = result.title
+    const seen = [result.medicine, result.dose, result.frequency].filter(Boolean).join(' · ')
+    recognizeHint.value = seen
+      ? `认出来了：${seen}。请核对无误后再保存。`
+      : result.note
+  } catch (cause) {
+    recognizeError.value = cause instanceof ApiError
+      ? cause.detail
+      : '没能识别这张照片，请重拍一张，或者手动填写。'
+  } finally {
+    recognizing.value = false
+  }
 }
 
 async function load() {
@@ -148,6 +210,21 @@ onMounted(() => { void load() })
       <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="reminder-dialog-title">
         <header class="modal-header"><h2 id="reminder-dialog-title">{{ editingId ? '编辑提醒' : '添加提醒' }}</h2><button class="icon-button" type="button" aria-label="关闭" @click="cancelForm"><X :size="22" /></button></header>
         <form class="settings-form" @submit.prevent="submit">
+          <div class="label-capture">
+            <button class="capture-button" type="button" :disabled="recognizing" @click="pickPhoto">
+              <Camera :size="28" />
+              <span class="capture-text">
+                <strong>{{ recognizing ? '正在认这张照片…' : '拍药盒照片，自动填' }}</strong>
+                <small>不识字也没关系，对着药盒正面拍一张</small>
+              </span>
+              <Sparkles class="capture-spark" :size="20" />
+            </button>
+            <input ref="fileInput" class="hidden-file" type="file" accept="image/*" capture="environment" @change="onPhotoPicked" />
+            <div v-if="recognizing" class="notice-bar" role="status"><LoaderCircle class="spin" :size="19" />正在识别，大约需要几秒钟…</div>
+            <div v-else-if="recognizeHint" class="notice-bar success" role="status"><Sparkles :size="19" />{{ recognizeHint }}</div>
+            <div v-else-if="recognizeError" class="notice-bar error" role="alert">{{ recognizeError }}</div>
+            <p v-else class="capture-footnote">认不准的药品也可以直接在下面手动填写。</p>
+          </div>
           <label class="field-label" for="reminder-title">提醒名称</label><input id="reminder-title" v-model="draft.title" required placeholder="例如：早餐后用药" />
           <label class="field-label" for="reminder-medicine">药品名称</label><input id="reminder-medicine" v-model="draft.medicine" required placeholder="请输入药品名称" />
           <div class="form-two-columns"><div><label class="field-label" for="reminder-dose">剂量</label><input id="reminder-dose" v-model="draft.dose" required placeholder="例如：1片" /></div><div><label class="field-label" for="reminder-time">每天时间</label><input id="reminder-time" v-model="draft.time" type="time" required /></div></div>

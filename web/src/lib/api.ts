@@ -10,6 +10,7 @@ import type {
   EventItem,
   Notification,
   Observation,
+  LabelRecognition,
   Reminder,
   Session,
   User,
@@ -190,6 +191,10 @@ export const api = {
   },
   createReminder(elderId: string, body: Pick<Reminder, 'title' | 'medicine' | 'dose' | 'time'> & { enabled?: boolean }): Promise<Reminder> {
     return json(`/elders/${encodeURIComponent(elderId)}/reminders`, 'POST', body)
+  },
+  /** 上传药盒照片，拿回可填入表单的字段。image 是 data URL。 */
+  recognizeLabel(elderId: string, image: string): Promise<LabelRecognition> {
+    return json(`/elders/${encodeURIComponent(elderId)}/reminders/recognize-label`, 'POST', { image })
   },
   updateReminder(reminderId: string, body: Partial<Pick<Reminder, 'title' | 'medicine' | 'dose' | 'time' | 'enabled'>>): Promise<Reminder> {
     return json(`/reminders/${encodeURIComponent(reminderId)}`, 'PATCH', body)

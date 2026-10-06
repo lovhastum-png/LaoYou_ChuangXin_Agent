@@ -6,6 +6,10 @@ from dataclasses import dataclass
 
 DEMO_PASSWORD_DEFAULT = "Laoyou123!"
 
+# 药盒识别用的多模态模型。仅后端持有密钥，浏览器不接触。
+DEFAULT_VLM_URL = "https://copilot.tencent.com/v2/chat/completions"
+DEFAULT_VLM_MODEL = "glm-5v-turbo"
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -21,6 +25,10 @@ class Settings:
     seed_demo: bool = True
     demo_password: str = DEMO_PASSWORD_DEFAULT
     cors_origins: tuple[str, ...] = ("*",)
+    vlm_api_key: str = ""
+    vlm_url: str = DEFAULT_VLM_URL
+    vlm_model: str = DEFAULT_VLM_MODEL
+    vlm_timeout_seconds: float = 30.0
 
 
 def _parse_origins(raw: str) -> tuple[str, ...]:
@@ -68,4 +76,9 @@ def load_settings() -> Settings:
         not in {"0", "false", "no"},
         demo_password=demo_password,
         cors_origins=_parse_origins(os.getenv("LAOYOU_CORS_ORIGINS", "*")),
+        vlm_api_key=os.getenv("LAOYOU_VLM_KEY", "").strip(),
+        vlm_url=os.getenv("LAOYOU_VLM_URL", DEFAULT_VLM_URL).strip() or DEFAULT_VLM_URL,
+        vlm_model=os.getenv("LAOYOU_VLM_MODEL", DEFAULT_VLM_MODEL).strip()
+        or DEFAULT_VLM_MODEL,
+        vlm_timeout_seconds=max(5.0, float(os.getenv("LAOYOU_VLM_TIMEOUT", "30"))),
     )
