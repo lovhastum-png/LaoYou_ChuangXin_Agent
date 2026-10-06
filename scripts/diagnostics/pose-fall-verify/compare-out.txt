@@ -1,0 +1,50 @@
+片段                                真值     基线告警        新判据告警       
+------------------------------------------------------------------
+fall-01-cam0.mp4                  fall   1           1           
+fall-02-cam0.mp4                  fall   1           1           
+fall-03-cam1.mp4                  fall   1           1           
+fall-04-cam0.mp4                  fall   1           1           
+fall-05-cam1.mp4                  fall   0           0           
+adl-01-cam0.mp4                   adl    0           0           
+adl-02-cam0.mp4                   adl    1           1           
+adl-06-cam0.mp4                   adl    0           0           
+【微信视频】input.mp4                   fall   0           1           
+------------------------------------------------------------------
+  基线: TP=4 FP=1 FN=2 TN=2  |  召回=0.667  精确=0.800  准确=0.667
+  新判据: TP=5 FP=1 FN=1 TN=2  |  召回=0.833  精确=0.833  准确=0.778
+[h264 @ 0000021f491fc980] Invalid NAL unit size (9392 > 9104).
+[h264 @ 0000021f491fc980] missing picture in access unit with size 9108
+[h264 @ 0000021f48ff3f40] Invalid NAL unit size (9392 > 9104).
+[h264 @ 0000021f48ff3f40] Error splitting the input into NAL units.
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0000021f49efa040] stream 0, offset 0x1b1a47: partial file
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0000021f49efa040] stream 0, offset 0x1b2ee4: partial file
+[h264 @ 0000021f3e61eb00] Invalid NAL unit size (9392 > 9104).
+[h264 @ 0000021f3e61eb00] missing picture in access unit with size 9108
+[h264 @ 0000021f48ff3f40] Invalid NAL unit size (9392 > 9104).
+[h264 @ 0000021f48ff3f40] Error splitting the input into NAL units.
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0000021f49efa040] stream 0, offset 0x1b1a47: partial file
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0000021f49efa040] stream 0, offset 0x1b2ee4: partial file
+[h264 @ 0000021f491d4680] Invalid NAL unit size (5530 > 4368).
+[h264 @ 0000021f491d4680] missing picture in access unit with size 4372
+[h264 @ 0000021f491d4e00] Invalid NAL unit size (5530 > 4368).
+[h264 @ 0000021f491d4e00] Error splitting the input into NAL units.
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0000021f49fccb40] stream 0, offset 0xdeeb1: partial file
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0000021f49fccb40] stream 0, offset 0xe1a85: partial file
+[h264 @ 0000021f48b0b100] Invalid NAL unit size (5530 > 4368).
+[h264 @ 0000021f48b0b100] missing picture in access unit with size 4372
+[h264 @ 0000021f48b0b880] Invalid NAL unit size (5530 > 4368).
+[h264 @ 0000021f48b0b880] Error splitting the input into NAL units.
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0000021f49fcce00] stream 0, offset 0xdeeb1: partial file
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0000021f49fcce00] stream 0, offset 0xe1a85: partial file
+[h264 @ 0000021f495652c0] Invalid NAL unit size (5787 > 4095).
+[h264 @ 0000021f495652c0] missing picture in access unit with size 4099
+[h264 @ 0000021f49e2bbc0] Invalid NAL unit size (5787 > 4095).
+[h264 @ 0000021f49e2bbc0] Error splitting the input into NAL units.
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0000021f49fcce00] stream 0, offset 0xa569c: partial file
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0000021f49fcce00] stream 0, offset 0xa82b5: partial file
+[h264 @ 0000021f48904300] Invalid NAL unit size (5787 > 4095).
+[h264 @ 0000021f48904300] missing picture in access unit with size 4099
+[h264 @ 0000021f49457200] Invalid NAL unit size (5787 > 4095).
+[h264 @ 0000021f49457200] Error splitting the input into NAL units.
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0000021f49fcd640] stream 0, offset 0xa569c: partial file
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0000021f49fcd640] stream 0, offset 0xa82b5: partial file

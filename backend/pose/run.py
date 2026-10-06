@@ -272,6 +272,21 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--source", default=None, help="上报来源标签（不得以 live 开头）")
     ap.add_argument("--max-frames", type=int, default=None, help="最多处理帧数")
     ap.add_argument("--stride", type=int, default=None, help="每 N 帧推理一次")
+
+    # 机位标定覆盖项。README 要求「换机位必须重新标定」，标定结果需要能
+    # 在不改源码的前提下落到运行时，否则只能改 config.py 默认值（会波及所有机位）。
+    cal = ap.add_argument_group("机位标定覆盖（默认沿用 config.py）")
+    cal.add_argument("--torso-angle", type=float, default=None,
+                     help="横卧角度阈值（度）。侧视机位 62；吊装/高仰角机位建议实测标定")
+    cal.add_argument("--confirm-frames", type=int, default=None,
+                     help="横卧连续确认帧数")
+    cal.add_argument("--descent-speed", type=float, default=None,
+                     help="鼻部下降速度阈值（画面高/秒）")
+    cal.add_argument("--angular-velocity", type=float, default=None,
+                     help="躯干角速度阈值（度/秒）")
+    cal.add_argument("--exit-fall", action="store_true",
+                     help="启用「坠落并沉出画面」判据（默认关闭；URFD 全量评估为净负，慎用）")
+
     ap.add_argument("--quiet", action="store_true", help="只输出告警")
     ap.add_argument("--json", default=None, help="把结果写入 JSON 文件")
     args = ap.parse_args(argv)
@@ -280,6 +295,16 @@ def main(argv: list[str] | None = None) -> int:
     cli_cfg = ClientConfig()
     if args.stride:
         det_cfg.frame_stride = args.stride
+    if args.torso_angle is not None:
+        det_cfg.torso_angle_threshold = args.torso_angle
+    if args.confirm_frames is not None:
+        det_cfg.lying_confirm_frames = args.confirm_frames
+    if args.descent_speed is not None:
+        det_cfg.descent_speed_threshold = args.descent_speed
+    if args.angular_velocity is not None:
+        det_cfg.angular_velocity_threshold = args.angular_velocity
+    if args.exit_fall:
+        det_cfg.detect_frame_exit_fall = True
     if args.elder_id:
         cli_cfg.elder_id = args.elder_id
     if args.password:
@@ -321,6 +346,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n  告警次数：{len(alarms)}")
 
     if args.json:
+        # 一并记录本次实际生效的阈值，便于事后核对用的是哪套标定
+        if isinstance(summary, dict):
+            summary["detection_config"] = det_cfg.as_dict()
         os.makedirs(os.path.dirname(os.path.abspath(args.json)), exist_ok=True)
         with open(args.json, "w", encoding="utf-8") as fh:
             json.dump(summary, fh, ensure_ascii=False, indent=2)

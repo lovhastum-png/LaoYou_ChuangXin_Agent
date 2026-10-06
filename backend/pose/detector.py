@@ -149,6 +149,9 @@ class FallDetector:
         self._rest_anchor: tuple[float, float] | None = None
         self._last_alarm_at: float = -1e9
         self._last_falling_at: float = -1e9
+        # 最近一次「画面内有人」那帧的髋部归一化纵坐标。
+        # 用于「坠落并沉出画面」判据：人消失后仍需知道消失前沉到多深。
+        self._last_present_hip_y: float = 0.0
 
     # ------------------------------------------------------------------ #
     def reset(self) -> None:
@@ -158,6 +161,7 @@ class FallDetector:
         self._lying_since = None
         self._rest_anchor = None
         self._last_falling_at = -1e9
+        self._last_present_hip_y = 0.0
 
     # ------------------------------------------------------------------ #
     def _compute_kinematics(self, feat: FrameFeatures) -> None:
@@ -228,6 +232,28 @@ class FallDetector:
             self._last_falling_at = feat.timestamp
 
         if not feat.present:
+            # 「坠落并沉出画面」：朝镜头方向扑倒时，身体会在转成横卧之前就
+            # 沉出画面下沿，lying 判据永远等不到。此时用「消失前已抵近下沿
+            # + 近期有坠落证据」作为等价判据（默认关闭，见 config 注释）。
+            if (
+                cfg.detect_frame_exit_fall
+                and self._last_present_hip_y >= cfg.exit_frame_hip_threshold
+                and feat.timestamp - self._last_falling_at
+                <= cfg.falling_evidence_window
+                and feat.timestamp - self._last_alarm_at >= cfg.cooldown_seconds
+            ):
+                self._last_alarm_at = feat.timestamp
+                self.state = State.ALARMED
+                detail["exit_frame_fall"] = True
+                detail["last_present_hip_y"] = round(self._last_present_hip_y, 3)
+                detail["falling_evidence"] = round(
+                    feat.timestamp - self._last_falling_at, 2
+                )
+                self._lying_frames = 0
+                self._lying_since = None
+                self._rest_anchor = None
+                return True, "坠落并沉出画面，判定为跌倒", detail
+
             self._lying_frames = 0
             self._lying_since = None
             self._rest_anchor = None
@@ -313,6 +339,8 @@ class FallDetector:
         """送入一帧特征，返回判定结果。"""
         self._compute_kinematics(feat)
         self._history.append(feat)
+        if feat.present:
+            self._last_present_hip_y = feat.hip_y
         triggered, reason, detail = self._evaluate(feat)
         return DetectionResult(
             triggered=triggered,

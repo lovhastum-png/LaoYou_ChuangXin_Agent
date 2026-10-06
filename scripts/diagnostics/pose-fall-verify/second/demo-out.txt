@@ -1,0 +1,8 @@
+239 帧 @ 30.00fps，开始渲染…
+  40/239
+  80/239
+  120/239
+  160/239
+  200/239
+  渲染完成，追加定格 75 帧…
+  已写出 D:\实验室项目\LaoYou_ChuangXin_Agent\tmp\fall-verify2\demo-compare.mp4

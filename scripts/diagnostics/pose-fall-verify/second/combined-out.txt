@@ -1,0 +1,85 @@
+推理中…
+
+=== 基线 62° / 无沉出画面 ===
+片段                        真值    告警   时刻
+adl-01-cam0.mp4           adl   0    
+adl-02-cam0.mp4           adl   1    1.0s   ← 不一致
+adl-06-cam0.mp4           adl   0    
+fall-01-cam0.mp4          fall  1    3.7s
+fall-02-cam0.mp4          fall  1    2.17s
+fall-03-cam1.mp4          fall  1    2.3s
+fall-04-cam0.mp4          fall  1    0.9s
+fall-05-cam1.mp4          fall  0       ← 不一致
+A-走廊平视                    fall  0       ← 不一致
+B-房间吊装                    fall  0       ← 不一致
+  TP=4 FP=1 FN=3 TN=2  |  召回=0.571  精确=0.800
+
+=== 仅沉出画面 ===
+片段                        真值    告警   时刻
+adl-01-cam0.mp4           adl   0    
+adl-02-cam0.mp4           adl   1    1.0s   ← 不一致
+adl-06-cam0.mp4           adl   0    
+fall-01-cam0.mp4          fall  1    3.7s
+fall-02-cam0.mp4          fall  1    2.17s
+fall-03-cam1.mp4          fall  1    2.3s
+fall-04-cam0.mp4          fall  1    0.9s
+fall-05-cam1.mp4          fall  0       ← 不一致
+A-走廊平视                    fall  1    3.0s
+B-房间吊装                    fall  0       ← 不一致
+  TP=5 FP=1 FN=2 TN=2  |  召回=0.714  精确=0.833
+
+=== 仅角度 50° ===
+片段                        真值    告警   时刻
+adl-01-cam0.mp4           adl   0    
+adl-02-cam0.mp4           adl   1    1.0s   ← 不一致
+adl-06-cam0.mp4           adl   0    
+fall-01-cam0.mp4          fall  1    3.6s
+fall-02-cam0.mp4          fall  1    2.0s
+fall-03-cam1.mp4          fall  1    2.23s
+fall-04-cam0.mp4          fall  1    0.73s
+fall-05-cam1.mp4          fall  1    3.6s
+A-走廊平视                    fall  0       ← 不一致
+B-房间吊装                    fall  1    3.57s
+  TP=6 FP=1 FN=1 TN=2  |  召回=0.857  精确=0.857
+
+=== 两者都要（62→50 + 沉出画面） ===
+片段                        真值    告警   时刻
+adl-01-cam0.mp4           adl   0    
+adl-02-cam0.mp4           adl   1    1.0s   ← 不一致
+adl-06-cam0.mp4           adl   0    
+fall-01-cam0.mp4          fall  1    3.6s
+fall-02-cam0.mp4          fall  1    2.0s
+fall-03-cam1.mp4          fall  1    2.23s
+fall-04-cam0.mp4          fall  1    0.73s
+fall-05-cam1.mp4          fall  1    3.6s
+A-走廊平视                    fall  1    3.0s
+B-房间吊装                    fall  1    3.57s
+  TP=7 FP=1 FN=0 TN=2  |  召回=1.000  精确=0.875
+
+=== 「两者都要（62→50 + 沉出画面）」触发理由 ===
+  adl-02-cam0.mp4: 1.0s → 坠落 + 横卧确认，判定为跌倒
+  fall-01-cam0.mp4: 3.6s → 坠落 + 横卧确认，判定为跌倒
+  fall-02-cam0.mp4: 2.0s → 坠落 + 横卧确认，判定为跌倒
+  fall-03-cam1.mp4: 2.23s → 坠落 + 横卧确认，判定为跌倒
+  fall-04-cam0.mp4: 0.73s → 坠落 + 横卧确认，判定为跌倒
+  fall-05-cam1.mp4: 3.6s → 坠落 + 横卧确认，判定为跌倒
+  A-走廊平视: 3.0s → 坠落并沉出画面，判定为跌倒
+  B-房间吊装: 3.57s → 坠落 + 横卧确认，判定为跌倒
+[h264 @ 0000019071153140] Invalid NAL unit size (5530 > 4368).
+[h264 @ 0000019071153140] missing picture in access unit with size 4372
+[h264 @ 00000190710d0200] Invalid NAL unit size (5530 > 4368).
+[h264 @ 00000190710d0200] Error splitting the input into NAL units.
+[mov,mp4,m4a,3gp,3g2,mj2 @ 00000190640f9600] stream 0, offset 0xdeeb1: partial file
+[mov,mp4,m4a,3gp,3g2,mj2 @ 00000190640f9600] stream 0, offset 0xe1a85: partial file
+[h264 @ 0000019064131740] Invalid NAL unit size (5787 > 4095).
+[h264 @ 0000019064131740] missing picture in access unit with size 4099
+[h264 @ 00000190720df040] Invalid NAL unit size (5787 > 4095).
+[h264 @ 00000190720df040] Error splitting the input into NAL units.
+[mov,mp4,m4a,3gp,3g2,mj2 @ 00000190711fec80] stream 0, offset 0xa569c: partial file
+[mov,mp4,m4a,3gp,3g2,mj2 @ 00000190711fec80] stream 0, offset 0xa82b5: partial file
+[h264 @ 00000190711fda00] Invalid NAL unit size (9392 > 9104).
+[h264 @ 00000190711fda00] missing picture in access unit with size 9108
+[h264 @ 0000019071e28e40] Invalid NAL unit size (9392 > 9104).
+[h264 @ 0000019071e28e40] Error splitting the input into NAL units.
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0000019071464d00] stream 0, offset 0x1b1a47: partial file
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0000019071464d00] stream 0, offset 0x1b2ee4: partial file

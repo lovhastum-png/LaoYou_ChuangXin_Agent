@@ -1,0 +1,28 @@
+{
+  "video": "tmp/fall-verify2/input.mp4",
+  "alarms": 1,
+  "first_alarm_seconds": 3.6,
+  "detection_config": {
+    "model_path": "D:\\实验室项目\\LaoYou_ChuangXin_Agent\\backend\\pose\\models\\yolov8n-pose.pt",
+    "imgsz": 640,
+    "conf": 0.35,
+    "device": "cpu",
+    "torso_angle_threshold": 52.0,
+    "descent_speed_threshold": 0.8,
+    "angular_velocity_threshold": 600.0,
+    "lying_confirm_frames": 5,
+    "immobility_seconds": 0.0,
+    "immobility_motion_threshold": 0.15,
+    "require_falling_evidence": true,
+    "falling_evidence_window": 2.0,
+    "enforce_rest_check": false,
+    "detect_frame_exit_fall": false,
+    "exit_frame_hip_threshold": 0.95,
+    "cooldown_seconds": 30.0,
+    "window_frames": 15,
+    "frame_stride": 1,
+    "resize_width": 960,
+    "min_valid_keypoints": 8,
+    "kpt_conf_threshold": 0.3
+  }
+}
