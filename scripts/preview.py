@@ -6,6 +6,11 @@ doc/01-开发者文档.md 15.3.1 记载的"本地快速预览模式"。
 
 该模式的限制（见 15.3.1）：跳过 pg_advisory_xact_lock，并发写入的幂等
 只依赖唯一键，**不支持多 worker / 多客户端并发**。仅适合单人查看效果。
+
+与 scripts/start.ps1 的差异：本脚本不启动 PostgreSQL，但**同样会读取
+runtime/local.env**。早先的版本漏了这一步，导致用户在该文件里填的
+QWEN_API_KEY / CLOUDFLARE_TURN_* 只在官方启动器里生效 —— 而本机没有
+PostgreSQL，官方启动器跑不起来，等于"填了没用"。见 doc/03-开发历史.md。
 """
 from __future__ import annotations
 
@@ -18,12 +23,40 @@ import time
 import webbrowser
 from pathlib import Path
 
+# 解析规则与 start.ps1 共用同一份实现（scripts/localenv.py）。
+# 直接跑本文件时 sys.path[0] 就是 scripts/，所以通常第一条就成功；
+# 若被别的脚本 import，则补一次脚本目录再 import。
+try:
+    from localenv import load_env_file
+except ImportError:  # pragma: no cover - 只在本文件被 import 时走到
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from localenv import load_env_file
+
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = ROOT / "backend" / ".venv" / "Scripts" / "python.exe"
 WEB_DIST = ROOT / "web" / "dist" / "index.html"
 TMP = ROOT / "tmp"
 DB_FILE = TMP / "preview.db"
-PORT = 8000
+ENV_FILE = ROOT / "runtime" / "local.env"
+ENV_EXAMPLE = ROOT / "runtime" / "local.env.example"
+# 默认 8000。留一个环境变量口子，便于在不打断已有实例的情况下再起一个
+# 用于自检（见 scripts/diagnostics/dialect-speech/selfcheck.py）。
+PORT = int(os.getenv("LAOYOU_PREVIEW_PORT", "8000") or "8000")
+
+
+def speech_summary(env: dict[str, str]) -> str:
+    """报告语音识别凭据状态；只报告有没有，不打印任何密钥内容。"""
+    if env.get("QWEN_API_KEY", "").strip():
+        return "已配置 通义千问（方言会归一化成普通话书面语）"
+    if all(env.get(name, "").strip() for name in ("XFYUN_APP_ID", "XFYUN_API_KEY", "XFYUN_API_SECRET")):
+        return "已配置 讯飞（方言需在讯飞控制台单独开通，否则按普通话处理）"
+    return "未配置（只能用文字输入；设备自带语音识别不受影响）"
+
+
+def tts_summary(env: dict[str, str]) -> str:
+    if env.get("LAOYOU_DISABLE_TTS", "").strip() in {"1", "true", "yes"}:
+        return "已禁用（LAOYOU_DISABLE_TTS）"
+    return "已就绪 edge-tts（粤语/东北话有独立音色，四川话回落普通话）"
 
 
 def lan_ipv4() -> str:
@@ -42,7 +75,7 @@ def port_in_use(port: int) -> bool:
         return sock.connect_ex(("127.0.0.1", port)) == 0
 
 
-def banner(ip: str) -> None:
+def banner(ip: str, env: dict[str, str], env_loaded: bool) -> None:
     line = "=" * 52
     print(line)
     print("  老友 · 本地预览启动器（SQLite 快速预览模式）")
@@ -56,6 +89,17 @@ def banner(ip: str) -> None:
     print()
     print("  手机安装 APK 后，登录页「服务地址」填：", f"http://{ip}:{PORT}")
     print("    （APP 会自动补 /api；不要填 localhost）")
+    print()
+    print("  语音识别：", speech_summary(env))
+    print("  语音播报：", tts_summary(env))
+    print()
+    if env_loaded:
+        print("  配置来源：", ENV_FILE)
+    else:
+        print("  配置来源： 未找到", ENV_FILE)
+        print(f"    想把方言识别打开：复制 {ENV_EXAMPLE.name} 为 {ENV_FILE.name}，")
+        print("    在 QWEN_API_KEY= 后面填上通义千问的 Key，再重启本窗口。")
+        print("    （该文件在 .gitignore 里，不会被提交）")
     print()
     print("  ★ 关闭本窗口即停止服务。")
     print("  ★ 预览模式不支持并发重试语义，仅供单人查看效果。")
@@ -86,16 +130,25 @@ def main() -> int:
     TMP.mkdir(exist_ok=True)
     ip = lan_ipv4()
 
+    file_env = load_env_file(ENV_FILE)
+    env_loaded = ENV_FILE.is_file()
+
     if port_in_use(PORT):
-        banner(ip)
+        banner(ip, file_env, env_loaded)
         print(f"[提示] 端口 {PORT} 已有实例在运行，直接复用，不再启动新进程。")
         webbrowser.open(f"http://127.0.0.1:{PORT}")
         return 0
 
-    banner(ip)
-
     env = os.environ.copy()
+    # 文件里的值覆盖系统环境变量（与 start.ps1 的 SetEnvironmentVariable 一致）。
+    env.update(file_env)
+    banner(ip, env, env_loaded)
+
     # 15.3.1：连接串必须写绝对路径，且用正斜杠。
+    # 放在 env.update 之后：预览模式的数据库由本脚本决定，local.env 里的
+    # DATABASE_URL 在这里不生效（那是官方 PostgreSQL 启动路径用的）。
+    if file_env.get("DATABASE_URL", "").strip():
+        print("[提示] local.env 里的 DATABASE_URL 在预览模式下不生效，已改用 tmp/preview.db。")
     env["DATABASE_URL"] = f"sqlite:///{ROOT.as_posix()}/tmp/{DB_FILE.name}"
     env["LAOYOU_DB_CONNECT_TIMEOUT"] = "5"
     env["PYTHONUTF8"] = "1"

@@ -16,16 +16,20 @@ __pycache__/
 .pytest_cache/
 .env
 node_modules/
+# pnpm 的本地内容寻址存储，随 pnpm install 重建。
+.pnpm-store/
 web/dist/
 android/.gradle/
 android/.kotlin/
 android/**/build/
 android/local.properties
-# 打包产物体积大且可重建，不进版本库。
-artifacts/*.apk
+# 打包产物体积大且可重建，不进版本库。用 ** 覆盖 artifacts 下的任意层级。
+artifacts/**/*.apk
 artifacts/windows/
 # 文档生成流水线的中间产物（用 doc 目录下的源 Markdown 可完整重建）。
 output/
+# 诊断过程的标注视频体积大、可由同目录脚本重新跑出来：只归档脚本、日志与结论文本。
+scripts/diagnostics/**/*.mp4
 .workbuddy/
 .DS_Store
 
