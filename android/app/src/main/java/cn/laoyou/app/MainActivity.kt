@@ -4,12 +4,21 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaPlayer
+import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.view.ViewGroup
 import android.webkit.PermissionRequest
@@ -62,6 +71,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -81,16 +91,31 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
 
 private enum class AppTab { HOME, EVENTS, REMINDERS, CALLS, ESCORTS, SETTINGS }
+
+// 录音参数：必须与后端 /speech 的约定一致（16kHz / 单声道 / 16bit 裸 PCM）。
+// 长度上下限来自后端校验：3200 字节（0.1 秒）≤ 长度 ≤ 960000 字节（30 秒）。
+// 这里上限取 20 秒：够说完一句话，上传也还快。
+private const val MIC_SAMPLE_RATE = 16_000
+private const val MIC_MIN_BYTES = 3_200
+private const val MIC_MAX_BYTES = MIC_SAMPLE_RATE * 2 * 20
 
 /**
  * 把异常翻译成老人看得懂的中文。
@@ -106,6 +131,132 @@ private fun friendlyMessage(e: Exception): String {
         is SocketTimeoutException -> "网络有点慢，请稍后重试。"
         else -> "操作没有成功，请检查网络后重试。"
     }
+}
+
+/** 录音/识别/播报的界面状态。集中成对象是为了让 HomeScreen 的参数不至于爆炸。 */
+private data class MicState(
+    val recording: Boolean = false,
+    val busy: Boolean = false,
+    val seconds: Int = 0,
+    val message: String? = null
+)
+
+private data class SpeechState(
+    val busy: Boolean = false,
+    val message: String? = null,
+    val voice: String? = null,
+    /** 是否已经回落到手机自带 TTS。回落只有普通话，必须让用户知道。 */
+    val degraded: Boolean = false
+)
+
+private data class AssistantVoiceUi(
+    val text: String = "",
+    val mic: MicState = MicState(),
+    val speech: SpeechState = SpeechState(),
+    /** 老人档案里是否开着语音播报；关了就不该出声。 */
+    val voiceEnabled: Boolean = true,
+    /** 方言标识 -> 说明当前识别/播报走的是哪条路。 */
+    val speechNote: String = "",
+    val broadcasts: List<Broadcast> = emptyList(),
+    val broadcastNote: String = "",
+    /** 只有 elder/admin 能回传"已播报"（后端契约第 3 节）。 */
+    val canReportPlayed: Boolean = false
+)
+
+/**
+ * 方言标识 -> 设备语音识别的 BCP-47 语言标签。
+ *
+ * 设备上的 SpeechRecognizer 只可能认识普通话与粤语；四川话/东北话没有对应的
+ * 系统识别语言，一律按普通话送进去 —— 反正普通话说出来的四川话它也听得懂，
+ * 真正需要方言的场景走服务端识别（那样还能顺带归一化）。
+ */
+private fun deviceRecognitionLanguage(dialect: String): String = when (dialect) {
+    "yue-HK" -> "zh-HK"
+    else -> "zh-CN"
+}
+
+private fun dialectLabel(dialect: String): String = when (dialect) {
+    "yue-HK" -> "粤语"
+    "sichuan" -> "四川话"
+    "northeast" -> "东北话"
+    else -> "普通话"
+}
+
+/**
+ * 把长文本切成不超过 [limit] 字的片段。
+ *
+ * 后端 /speech/synthesize 的 text 上限是 300 字（schemas.SpeechSynthesisRequest
+ * 的 max_length 与 edge_tts.MAX_TEXT_LENGTH 对齐），超了直接 422。
+ * 这里留出余量，优先在句末切，其次逗号，实在没有标点才硬切 —— 硬切会把
+ * 一个词拆成两半，只在超长无标点文本上才会发生。
+ */
+private fun chunkForSpeech(text: String, limit: Int = 280): List<String> {
+    val trimmed = text.trim()
+    if (trimmed.length <= limit) return listOf(trimmed)
+    val chunks = mutableListOf<String>()
+    var rest = trimmed
+    while (rest.length > limit) {
+        val window = rest.substring(0, limit)
+        val cut = listOf('。', '！', '？', '；', '\n', '，', '、').maxOf { window.lastIndexOf(it) }
+        val at = if (cut > 0) cut + 1 else limit
+        chunks += rest.substring(0, at)
+        rest = rest.substring(at).trimStart()
+    }
+    if (rest.isNotBlank()) chunks += rest
+    return chunks
+}
+
+private fun broadcastKindLabel(kind: String): String = when (kind) {
+    "weather" -> "天气"
+    "health" -> "健康"
+    "medication" -> "用药"
+    else -> kind
+}
+
+/**
+ * 一句话说清"按下麦克风会发生什么"。
+ *
+ * 两条路的差别是真实存在的，界面不能含糊：配了后端方言识别就是录音上传
+ * （能认方言、顺带归一化），没配就是设备自带识别（不联网，但只认普通话，
+ * 而且很多国产机没有引擎）。
+ */
+private fun speechRouteNote(capabilities: Capabilities?, dialect: String): String {
+    return if (capabilities?.speechConfigured == true) {
+        "按麦克风录音后发给电脑端识别，${dialectLabel(dialect)}会归一化成普通话"
+    } else {
+        "按麦克风用手机自带的语音识别，只认普通话；" +
+            "方言需在电脑端 runtime/local.env 填 QWEN_API_KEY 后重启服务"
+    }
+}
+
+/** 一句话说清"播报用哪个声音"。 */
+private fun broadcastRouteNote(capabilities: Capabilities?, dialect: String): String {
+    if (capabilities?.ttsServerSide != true) {
+        return "电脑端的语音合成不可用，播报会用手机自带语音，只有普通话"
+    }
+    val hasVoice = capabilities.ttsVoices.any { it.id == dialect && it.available }
+    return when {
+        dialect == "zh-CN" -> "播报用电脑端合成，普通话女声"
+        hasVoice -> "播报用电脑端合成，${dialectLabel(dialect)}音色"
+        // 四川话目前没有免费音色，服务端会回落普通话音色但文本已归一化，
+        // 这一点必须说出来，否则用户会以为方言合成坏了。
+        else -> "电脑端没有${dialectLabel(dialect)}音色，会用普通话读出（文本已按方言归一化）"
+    }
+}
+
+/** 把系统语音识别的错误码翻译成一句人话。 */
+private fun deviceRecognitionErrorText(error: Int): String = when (error) {
+    SpeechRecognizer.ERROR_AUDIO -> "录音出错，请看看麦克风是不是被别的应用占用了。"
+    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "没有麦克风权限，无法语音输入。"
+    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "设备上的语音识别需要联网，请检查网络。"
+    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没有听清，请再说一次。"
+    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "语音识别正忙，请稍后再试。"
+    SpeechRecognizer.ERROR_SERVER, SpeechRecognizer.ERROR_SERVER_DISCONNECTED -> "设备上的语音识别服务出错，请改用文字输入。"
+    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
+        "这台手机不认识这个语言。方言请在电脑端配好识别后用文字输入，或直接用普通话说。"
+    // 用户主动取消时系统会回调 ERROR_CLIENT，不必当成故障提示。
+    SpeechRecognizer.ERROR_CLIENT -> "已取消语音输入。"
+    else -> "语音识别没有成功，请改用文字输入。"
 }
 
 private val LaoyouColors = lightColorScheme(
@@ -191,7 +342,334 @@ private fun LaoyouApp() {
     val tts = remember {
         TextToSpeech(context) {}.also { it.language = Locale.CHINA }
     }
-    DisposableEffect(Unit) { onDispose { tts.shutdown() } }
+
+    // ---- 语音播报 / 语音输入 ----
+    var voiceUi by remember { mutableStateOf(AssistantVoiceUi()) }
+    var assistantText by rememberSaveable { mutableStateOf("") }
+    // 播报用"代次"做取消：每次重新播报/停止都 +1，被取消的协程发现代次变了就退出，
+    // 避免两段语音叠在一起说话。
+    var speechGeneration by remember { mutableIntStateOf(0) }
+    var activePlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var recognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
+    // 录音时用原子布尔量做停止信号：AudioRecord 的读取在 IO 线程里，
+    // 读 Compose 状态跨线程不可靠，而且这个标志是要被另一个线程轮询的。
+    val recordingStop = remember { AtomicBoolean(true) }
+    var micJob by remember { mutableStateOf<Job?>(null) }
+
+    fun stopSpeech() {
+        speechGeneration += 1
+        activePlayer?.let { player ->
+            runCatching { if (player.isPlaying) player.stop() }
+            runCatching { player.release() }
+        }
+        activePlayer = null
+        voiceUi = voiceUi.copy(speech = SpeechState())
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            speechGeneration += 1
+            recordingStop.set(true)
+            activePlayer?.let { player -> runCatching { player.release() } }
+            activePlayer = null
+            recognizer?.let { engine -> runCatching { engine.destroy() } }
+            recognizer = null
+            tts.shutdown()
+        }
+    }
+
+    /** 服务端返回的是 mp3 字节，而 MediaPlayer 只能从文件/URI 播，所以先落盘。 */
+    fun writeSpeechFile(bytes: ByteArray): String {
+        val file = File(context.cacheDir, "laoyou-speech.mp3")
+        file.writeBytes(bytes)
+        return file.absolutePath
+    }
+
+    /**
+     * 播放一个本地音频文件，挂起直到播完（或协程被取消）。
+     *
+     * 用挂起而不是回调：一段长文本会被拆成多段分别合成，必须等前一段播完
+     * 再播下一段，否则几段声音会同时响。
+     */
+    suspend fun playAudioFile(path: String) {
+        suspendCancellableCoroutine<Unit> { continuation ->
+            val player = MediaPlayer()
+            try {
+                player.setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                player.setDataSource(path)
+                player.setOnCompletionListener { if (continuation.isActive) continuation.resume(Unit) }
+                player.setOnErrorListener { _, _, _ ->
+                    if (continuation.isActive) continuation.resume(Unit)
+                    true
+                }
+                player.prepare()
+                activePlayer = player
+                player.start()
+            } catch (e: Exception) {
+                runCatching { player.release() }
+                if (continuation.isActive) continuation.resume(Unit)
+                return@suspendCancellableCoroutine
+            }
+            continuation.invokeOnCancellation {
+                runCatching { player.stop() }
+                runCatching { player.release() }
+            }
+        }
+    }
+
+    /**
+     * 播报一段文字。
+     *
+     * 优先走服务端 edge-tts —— 这是手机上唯一能说粤语/东北话的路子：
+     * 系统 TextToSpeech 固定 Locale.CHINA，只有普通话，老人设了粤语也读不出来。
+     * 服务端不可用时才降级到系统 TTS，并且界面必须说明"现在只有普通话"，
+     * 不能假装方言播报成功了。
+     */
+    fun speakReply(text: String) {
+        val client = api
+        val elder = selectedElder
+        val trimmed = text.trim()
+        if (client == null || elder == null || trimmed.isEmpty()) return
+        stopSpeech()
+        val generation = speechGeneration
+        val dialect = elder.dialect
+        scope.launch {
+            voiceUi = voiceUi.copy(speech = SpeechState(busy = true, message = "正在合成语音…"))
+            for (chunk in chunkForSpeech(trimmed)) {
+                if (generation != speechGeneration) return@launch
+                val audio = try {
+                    withContext(Dispatchers.IO) { client.synthesizeSpeech(elder.id, chunk, dialect) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (generation != speechGeneration) return@launch
+                    voiceUi = voiceUi.copy(
+                        speech = SpeechState(
+                            busy = true,
+                            degraded = true,
+                            message = "电脑端语音不可用（${friendlyMessage(e)}），已改用手机自带语音，只有普通话。"
+                        )
+                    )
+                    tts.speak(trimmed, TextToSpeech.QUEUE_FLUSH, null, "laoyou-assistant")
+                    return@launch
+                }
+                if (generation != speechGeneration) return@launch
+                voiceUi = voiceUi.copy(
+                    speech = SpeechState(busy = true, message = "正在播放…", voice = audio.voice)
+                )
+                val path = withContext(Dispatchers.IO) { writeSpeechFile(audio.bytes) }
+                if (generation != speechGeneration) return@launch
+                playAudioFile(path)
+                withContext(Dispatchers.IO) { runCatching { File(path).delete() } }
+            }
+            // 播完只清"正在播放"的状态，保留音色信息：
+            // 用户往往正是想知道刚才念的是不是一个方言音色。
+            if (generation == speechGeneration) {
+                voiceUi = voiceUi.copy(speech = voiceUi.speech.copy(busy = false, message = null))
+            }
+        }
+    }
+
+    fun releaseRecognizer(engine: SpeechRecognizer) {
+        runCatching { engine.destroy() }
+        if (recognizer === engine) recognizer = null
+    }
+
+    /**
+     * 用设备自带的语音识别（SpeechRecognizer）。
+     *
+     * 这是没有配置后端方言识别时的退化路径：不联网、不用 Key，
+     * 但**只认普通话**，而且未装 Google 语音服务的国产机上通常压根没有引擎。
+     * 这两件事都要如实告诉用户，不要让人以为按了没反应是自己的问题。
+     */
+    fun startDeviceRecognition(dialect: String) {
+        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+            voiceUi = voiceUi.copy(
+                mic = MicState(
+                    message = "这台手机没有可用的语音识别服务（未装 Google 语音服务的手机会这样）。" +
+                        "请改用文字输入；在电脑端配好方言识别后，这里的麦克风会自动换成录音上传。"
+                )
+            )
+            return
+        }
+        recognizer?.let { engine -> runCatching { engine.destroy() } }
+        val engine = SpeechRecognizer.createSpeechRecognizer(context)
+        recognizer = engine
+        voiceUi = voiceUi.copy(mic = MicState(busy = true, message = "正在启动语音识别…"))
+        engine.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                voiceUi = voiceUi.copy(mic = MicState(recording = true, message = "正在听，请说话；说完再点一下麦克风。"))
+            }
+
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+
+            override fun onEndOfSpeech() {
+                voiceUi = voiceUi.copy(mic = MicState(busy = true, message = "正在识别…"))
+            }
+
+            override fun onError(error: Int) {
+                releaseRecognizer(engine)
+                // 用户主动取消时系统也会回调 ERROR_CLIENT，此时清掉提示更合适。
+                voiceUi = voiceUi.copy(
+                    mic = if (error == SpeechRecognizer.ERROR_CLIENT) MicState()
+                    else MicState(message = deviceRecognitionErrorText(error))
+                )
+            }
+
+            override fun onResults(results: Bundle?) {
+                val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                releaseRecognizer(engine)
+                if (text.isBlank()) {
+                    voiceUi = voiceUi.copy(mic = MicState(message = "没有听清，请再说一次。"))
+                } else {
+                    voiceUi = voiceUi.copy(mic = MicState())
+                    // 只填进输入框、不自动发送：助手能创建提醒，
+                    // 误听一句就自动提交可能生成一条错的安排。
+                    assistantText = text
+                }
+            }
+
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, deviceRecognitionLanguage(dialect))
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        }
+        engine.startListening(intent)
+    }
+
+    /**
+     * 录音：16kHz / 单声道 / 16bit 裸 PCM —— 正好是后端 /speech 要求的格式，
+     * 不需要在手机上做任何转码。
+     *
+     * 走这条路（而不是设备识别）的原因：**只有后端能把方言归一化成普通话**。
+     * 阻塞式读取，每 0.2 秒检查一次停止标志，所以必须在 IO 线程调用。
+     */
+    fun recordPcm(maxBytes: Int): ByteArray {
+        val minBuffer = AudioRecord.getMinBufferSize(
+            MIC_SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
+        )
+        if (minBuffer <= 0) throw IllegalStateException("这台设备不支持 16kHz 录音")
+        val recorder = AudioRecord(
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MIC_SAMPLE_RATE,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+            maxOf(minBuffer, 12_800) * 2
+        )
+        if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+            recorder.release()
+            throw IllegalStateException("麦克风不可用或被其它应用占用")
+        }
+        val out = ByteArrayOutputStream(maxBytes)
+        val buffer = ByteArray(6_400) // 0.2 秒，决定"点结束"后多久真的停
+        try {
+            recorder.startRecording()
+            while (out.size() < maxBytes && !recordingStop.get()) {
+                val read = recorder.read(buffer, 0, buffer.size)
+                if (read <= 0) break
+                out.write(buffer, 0, read)
+            }
+        } finally {
+            runCatching { recorder.stop() }
+            recorder.release()
+        }
+        return out.toByteArray()
+    }
+
+    /** 录一段上传给后端识别（方言会被归一化成普通话书面语），结果填进输入框。 */
+    fun startServerRecognition() {
+        val client = api
+        val elder = selectedElder
+        if (client == null || elder == null) return
+        val dialect = elder.dialect
+        recordingStop.set(false)
+        voiceUi = voiceUi.copy(mic = MicState(recording = true, seconds = 0, message = "正在录音，说完再点一下麦克风结束。"))
+        micJob = scope.launch {
+            // 秒数交给主线程上的计时器，不要在 IO 线程里写 Compose 状态。
+            val ticker = launch {
+                var elapsed = 0
+                while (isActive && !recordingStop.get()) {
+                    delay(1_000)
+                    elapsed += 1
+                    voiceUi = voiceUi.copy(mic = voiceUi.mic.copy(seconds = elapsed))
+                }
+            }
+            val pcm = try {
+                withContext(Dispatchers.IO) { recordPcm(MIC_MAX_BYTES) }
+            } catch (e: CancellationException) {
+                ticker.cancel()
+                throw e
+            } catch (e: Exception) {
+                ticker.cancel()
+                recordingStop.set(true)
+                voiceUi = voiceUi.copy(mic = MicState(message = "录音没有成功：${friendlyMessage(e)}"))
+                return@launch
+            }
+            ticker.cancel()
+            recordingStop.set(true)
+            if (pcm.size < MIC_MIN_BYTES) {
+                voiceUi = voiceUi.copy(mic = MicState(message = "录得太短了，请把一句话说完再结束。"))
+                return@launch
+            }
+            voiceUi = voiceUi.copy(mic = MicState(busy = true, message = "正在识别…"))
+            val text = try {
+                withContext(Dispatchers.IO) { client.transcribeSpeech(elder.id, dialect, pcm) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                voiceUi = voiceUi.copy(mic = MicState(message = "没有识别成功：${friendlyMessage(e)}"))
+                return@launch
+            }
+            voiceUi = voiceUi.copy(
+                mic = if (text.isBlank()) MicState(message = "没有听清，请再说一次。") else MicState()
+            )
+            if (text.isNotBlank()) assistantText = text
+        }
+    }
+
+    // 声明顺序说明：launcher 的回调要用到上面两个 start*，所以只能放在它们之后；
+    // toggleMic 又要用 launcher，放最后。
+    val micPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val elder = selectedElder
+        when {
+            !granted -> voiceUi = voiceUi.copy(
+                mic = MicState(message = "没有麦克风权限，无法语音输入。可以在系统设置里允许「老友」使用麦克风。")
+            )
+            elder != null && capabilities?.speechConfigured == true -> startServerRecognition()
+            elder != null -> startDeviceRecognition(elder.dialect)
+        }
+    }
+
+    /**
+     * 麦克风按钮。同一个按钮承担"开始/结束"，并且按后端能力自动选择识别方式：
+     * 配了方言识别就录音上传（能认方言），否则用设备自带识别（只有普通话）。
+     */
+    fun toggleMic() {
+        val elder = selectedElder ?: return
+        when {
+            voiceUi.mic.busy -> voiceUi = voiceUi.copy(mic = MicState())
+            voiceUi.mic.recording -> {
+                // 两条路径的"停止"不同：录音要置停止标志，设备识别要 stopListening。
+                recordingStop.set(true)
+                recognizer?.let { engine -> runCatching { engine.stopListening() } }
+                voiceUi = voiceUi.copy(mic = MicState(busy = true, message = "正在识别…"))
+            }
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) !=
+                PackageManager.PERMISSION_GRANTED -> micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            capabilities?.speechConfigured == true -> startServerRecognition()
+            else -> startDeviceRecognition(elder.dialect)
+        }
+    }
 
     LaunchedEffect(user?.id) {
         if (user != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -321,6 +799,19 @@ private fun LaoyouApp() {
             }
             delay(5_000)
         }
+    }
+
+    // 登录后立刻拉一次能力清单。
+    //
+    // 首页那两条"当前走哪条语音路"的说明（助手卡片的识别路径、播报卡片的音色来源）
+    // 都以 capabilities 为准。原先只有切到「设置」页才拉（见 AppShell 里的
+    // AppTab.SETTINGS -> onLoadCapabilities），于是首页永远拿不到，只能按最悲观的
+    // 分支渲染：明明服务端 edge-tts 可用、点播放出来的就是 zh-CN-XiaoxiaoNeural，
+    // 卡片上却写"电脑端的语音合成不可用，播报会用手机自带语音，只有普通话"。
+    // 文案与事实相反，恰恰违背了这一项要解决的"别让人误判音色"。
+    LaunchedEffect(api?.token) {
+        val client = api ?: return@LaunchedEffect
+        perform({ client.getCapabilities() }) { capabilities = it }
     }
 
     LaunchedEffect(selectedElder?.id, api?.token) {
@@ -521,7 +1012,9 @@ private fun LaoyouApp() {
                     if (client != null && elderForAssistant != null) {
                         perform({ client.assistant(elderForAssistant.id, text, elderForAssistant.dialect, confirmToken) }) {
                             assistantResult = it
-                            if (elderForAssistant.voiceEnabled && it.reply.isNotBlank()) tts.speak(it.reply, TextToSpeech.QUEUE_FLUSH, null, "laoyou-assistant")
+                            // 播报改走服务端方言音色；不可用时 speakReply 内部会
+                            // 自动降级到手机自带 TTS 并在界面上说明。
+                            if (elderForAssistant.voiceEnabled && it.reply.isNotBlank()) speakReply(it.reply)
                         }
                     }
                 },
@@ -537,6 +1030,37 @@ private fun LaoyouApp() {
                     seenNotificationIds = emptySet()
                     incomingCall = null
                     notifiedIncomingCallIds = emptySet()
+                    // 退出登录要把录音、播放、识别一并停掉，否则新账号登录后
+                    // 可能听到上一个会话残留的语音。
+                    stopSpeech()
+                    micJob?.cancel()
+                    micJob = null
+                    recordingStop.set(true)
+                    recognizer?.let { engine -> runCatching { engine.destroy() } }
+                    recognizer = null
+                    assistantText = ""
+                    assistantResult = null
+                },
+                voice = voiceUi.copy(text = assistantText),
+                onAssistantTextChange = { assistantText = it },
+                onToggleMic = ::toggleMic,
+                onReplayReply = {
+                    val reply = assistantResult?.reply.orEmpty()
+                    if (selectedElder?.voiceEnabled == true && reply.isNotBlank()) speakReply(reply)
+                },
+                onStopSpeech = ::stopSpeech,
+                onPlayBroadcast = { broadcast ->
+                    if (selectedElder?.voiceEnabled == true) speakReply(broadcast.text)
+                },
+                onMarkBroadcastPlayed = { broadcast ->
+                    api?.let { client ->
+                        perform({ client.markBroadcastPlayed(broadcast.id) }) { updated ->
+                            dashboard = dashboard?.copy(
+                                broadcasts = dashboard?.broadcasts?.map { if (it.id == updated.id) updated else it }
+                                    ?: listOf(updated)
+                            )
+                        }
+                    }
                 },
                 onErrorDismiss = { error = null }
             )
@@ -701,6 +1225,13 @@ private fun AppShell(
     onConfirmCameraOff: () -> Unit,
     onLoadSnapshot: () -> Unit,
     onAssistant: (String, String?) -> Unit,
+    voice: AssistantVoiceUi,
+    onAssistantTextChange: (String) -> Unit,
+    onToggleMic: () -> Unit,
+    onReplayReply: () -> Unit,
+    onStopSpeech: () -> Unit,
+    onPlayBroadcast: (Broadcast) -> Unit,
+    onMarkBroadcastPlayed: (Broadcast) -> Unit,
     onLogout: () -> Unit,
     onErrorDismiss: () -> Unit
 ) {
@@ -752,7 +1283,35 @@ private fun AppShell(
                 }
             }
             when (currentTab) {
-                AppTab.HOME -> HomeScreen(elder, dashboard, observations, snapshot, snapshotAt, snapshotLoading, assistantResult, loading, onRefreshDashboard, onLoadSnapshot, onAssistant)
+                AppTab.HOME -> HomeScreen(
+                    elder = elder,
+                    dashboard = dashboard,
+                    observations = observations,
+                    snapshot = snapshot,
+                    snapshotAt = snapshotAt,
+                    snapshotLoading = snapshotLoading,
+                    assistantResult = assistantResult,
+                    loading = loading,
+                    voice = voice.copy(
+                        voiceEnabled = elder.voiceEnabled,
+                        speechNote = speechRouteNote(capabilities, elder.dialect),
+                        broadcastNote = broadcastRouteNote(capabilities, elder.dialect),
+                        // 播报列表与回传权限都按"今天、这个老人"来定。
+                        broadcasts = dashboard?.broadcasts.orEmpty(),
+                        canReportPlayed = user.role == "elder" || user.role == "admin",
+                        // 老人把语音播报关掉时，不该再显示播报/试听按钮。
+                        speech = if (elder.voiceEnabled) voice.speech else SpeechState()
+                    ),
+                    onRefresh = onRefreshDashboard,
+                    onLoadSnapshot = onLoadSnapshot,
+                    onAssistant = onAssistant,
+                    onAssistantTextChange = onAssistantTextChange,
+                    onToggleMic = onToggleMic,
+                    onReplayReply = onReplayReply,
+                    onStopSpeech = onStopSpeech,
+                    onPlayBroadcast = onPlayBroadcast,
+                    onMarkBroadcastPlayed = onMarkBroadcastPlayed
+                )
                 AppTab.EVENTS -> if (selectedEvent == null) EventsScreen(events, onLoadEvents, onLoadEvent) else EventDetailScreen(user.role, selectedEvent, onBack = { onTab(AppTab.EVENTS) }, onAction = onEventAction, onAckNotification = onAckNotification, onRetryNotification = onRetryNotification)
                 AppTab.REMINDERS -> RemindersScreen(user.role, reminders, onLoadReminders, onCreateReminder, onUpdateReminder, onDeleteReminder)
                 AppTab.CALLS -> CallsScreen(user.role, calls, onLoadCalls, onStartCall, onOpenCall)
@@ -796,11 +1355,18 @@ private fun HomeScreen(
     snapshotLoading: Boolean,
     assistantResult: AssistantResult?,
     loading: Boolean,
+    voice: AssistantVoiceUi,
     onRefresh: () -> Unit,
     onLoadSnapshot: () -> Unit,
-    onAssistant: (String, String?) -> Unit
+    onAssistant: (String, String?) -> Unit,
+    onAssistantTextChange: (String) -> Unit,
+    onToggleMic: () -> Unit,
+    onReplayReply: () -> Unit,
+    onStopSpeech: () -> Unit,
+    onPlayBroadcast: (Broadcast) -> Unit,
+    onMarkBroadcastPlayed: (Broadcast) -> Unit
 ) {
-    var assistantText by remember { mutableStateOf("") }
+    val assistantText = voice.text
     val scroll = rememberScrollState()
     Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -859,16 +1425,72 @@ private fun HomeScreen(
             }
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(18.dp)) {
-                    Text("你好通通 · 文字等价入口", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("你好通通 · 文字与语音入口", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Text("可以查询天气、健康和提醒；未配置的能力会明确提示。", color = Color(0xFF37485C), fontSize = 16.sp, modifier = Modifier.padding(top = 5.dp))
-                    OutlinedTextField(assistantText, { assistantText = it }, label = { Text("例如：查天气、查询提醒、每天晚上八点提醒我吃药") }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
-                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
-                        Button(onClick = { if (assistantText.isNotBlank()) { onAssistant(assistantText.trim(), null); assistantText = "" } }, enabled = assistantText.isNotBlank()) { Text("发送") }
+                    Text(
+                        voice.speechNote,
+                        color = Color(0xFF37485C),
+                        fontSize = 15.sp,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                    OutlinedTextField(
+                        assistantText,
+                        onAssistantTextChange,
+                        label = { Text("例如：查天气、查询提醒、每天晚上八点提醒我吃药") },
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedButton(onClick = onToggleMic) {
+                            Text(
+                                when {
+                                    voice.mic.recording -> "⏹ 结束录音"
+                                    voice.mic.busy -> "… 识别中"
+                                    else -> "🎤 语音输入"
+                                }
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Button(
+                            onClick = { if (assistantText.isNotBlank()) { onAssistant(assistantText.trim(), null); onAssistantTextChange("") } },
+                            enabled = assistantText.isNotBlank()
+                        ) { Text("发送") }
+                    }
+                    if (voice.mic.recording && voice.mic.seconds > 0) {
+                        Text("已录 ${voice.mic.seconds} 秒", color = Color(0xFF884005), fontSize = 16.sp, modifier = Modifier.padding(top = 6.dp))
+                    }
+                    voice.mic.message?.let { text ->
+                        Text(text, color = Color(0xFF37485C), fontSize = 16.sp, modifier = Modifier.padding(top = 6.dp))
+                    }
+                    // 播报状态：说清用的是电脑端音色还是手机自带语音。
+                    //
+                    // 这一段必须放在 assistantResult 之外。播报卡片上的"播放"只做
+                    // 试听（speakReply），不产生 assistantResult；早先写在里面时，
+                    // 点播放会合成、会出声，但界面一个字都不显示 —— 用户没法判断
+                    // 刚才响的是不是方言音色，恰恰背离了这一项要解决的问题。
+                    voice.speech.message?.let { message ->
+                        Text(message, color = Color(0xFF37485C), fontSize = 16.sp, modifier = Modifier.padding(top = 6.dp))
+                    }
+                    voice.speech.voice?.let { used ->
+                        Text("音色：$used", color = Color(0xFF37485C), fontSize = 15.sp, modifier = Modifier.padding(top = 3.dp))
+                    }
+                    if (voice.speech.busy) {
+                        OutlinedButton(onClick = onStopSpeech, modifier = Modifier.padding(top = 6.dp)) { Text("⏹ 停止播报") }
                     }
                     assistantResult?.let { result ->
                         HorizontalDivider(Modifier.padding(vertical = 10.dp))
                         Text(result.reply, fontSize = 17.sp)
                         Text("服务：${assistantModeLabel(result.mode)} · ${assistantActionLabel(result.action)}", fontSize = 16.sp, color = Color(0xFF37485C), modifier = Modifier.padding(top = 5.dp))
+                        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (voice.voiceEnabled) {
+                                OutlinedButton(onClick = onReplayReply, enabled = !voice.speech.busy) { Text("🔊 重念一遍") }
+                            } else {
+                                Text("老人档案里关闭了语音播报，因此不会自动朗读。", color = Color(0xFF37485C), fontSize = 16.sp)
+                            }
+                        }
                         result.confirmToken?.let { token ->
                             Text("为避免误操作，请确认后再执行。", color = Color(0xFF884005), modifier = Modifier.padding(top = 6.dp))
                             Button(onClick = { onAssistant("确认", token) }, modifier = Modifier.padding(top = 6.dp)) { Text("确认执行") }
@@ -879,8 +1501,49 @@ private fun HomeScreen(
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(18.dp)) {
                     Text("提醒与播报", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("启用提醒：${dashboard.reminders.count { it.enabled }} 条；今日播报：${dashboard.broadcasts.size} 条", modifier = Modifier.padding(top = 8.dp))
+                    Text("启用提醒：${dashboard.reminders.count { it.enabled }} 条；今日播报：${voice.broadcasts.size} 条", modifier = Modifier.padding(top = 8.dp))
+                    Text(
+                        voice.broadcastNote,
+                        color = Color(0xFF37485C),
+                        fontSize = 15.sp,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
                     Text("APP运行期间每30秒轮询通知并尝试发本地通知；APP被系统终止后不保证后台提醒。", color = Color(0xFF37485C), fontSize = 16.sp, modifier = Modifier.padding(top = 8.dp))
+                    if (voice.broadcasts.isEmpty()) {
+                        Text("今天还没有播报记录。用药提醒到点后会生成一条。", color = Color(0xFF37485C), fontSize = 16.sp, modifier = Modifier.padding(top = 10.dp))
+                    }
+                    voice.broadcasts.forEach { broadcast ->
+                        HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                        Text("${broadcastKindLabel(broadcast.kind)} · ${formatTime(broadcast.scheduledAt)}", fontSize = 16.sp, color = Color(0xFF37485C))
+                        Text(broadcast.text, fontSize = 17.sp, modifier = Modifier.padding(top = 4.dp))
+                        Text(
+                            if (broadcast.playedAt != null) "已播报：${formatTime(broadcast.playedAt)}" else "尚未播报",
+                            fontSize = 15.sp,
+                            color = if (broadcast.playedAt != null) Color(0xFF1B5E20) else Color(0xFF884005),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { onPlayBroadcast(broadcast) },
+                                enabled = voice.voiceEnabled && !voice.speech.busy
+                            ) { Text(if (broadcast.playedAt != null) "🔊 再听一次" else "🔊 播放") }
+                            if (voice.canReportPlayed && broadcast.playedAt == null) {
+                                OutlinedButton(
+                                    onClick = { onMarkBroadcastPlayed(broadcast) },
+                                    enabled = !loading
+                                ) { Text("标记已播") }
+                            }
+                        }
+                    }
+                    if (!voice.canReportPlayed) {
+                        // 这不是缺陷，是契约：后端只接受老人端回传播报状态。
+                        Text(
+                            "「标记已播」只有老人端账号能回传（后端契约如此），当前身份只能试听。",
+                            color = Color(0xFF37485C),
+                            fontSize = 15.sp,
+                            modifier = Modifier.padding(top = 10.dp)
+                        )
+                    }
                 }
             }
         }
@@ -1292,7 +1955,19 @@ private fun SettingsScreen(
                     Text("播报 ${if (elder.voiceEnabled) "已开启" else "已关闭"}", modifier = Modifier.weight(1f))
                     Switch(checked = elder.voiceEnabled, onCheckedChange = { if (canEdit) onUpdateSettings(null, it, null) }, enabled = canEdit)
                 }
-                Text("当前方言：${elder.dialect}", modifier = Modifier.padding(top = 8.dp))
+                Text("当前方言：${dialectLabel(elder.dialect)}", modifier = Modifier.padding(top = 8.dp))
+                Text(
+                    "${broadcastRouteNote(capabilities, elder.dialect)}。",
+                    fontSize = 16.sp,
+                    color = Color(0xFF37485C),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                Text(
+                    "${speechRouteNote(capabilities, elder.dialect)}。",
+                    fontSize = 16.sp,
+                    color = Color(0xFF37485C),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
                 Text("方言能力会标明可用状态；系统普通话识别不会冒充方言。", fontSize = 16.sp, color = Color(0xFF37485C), modifier = Modifier.padding(top = 4.dp))
             }
         }
@@ -1301,7 +1976,8 @@ private fun SettingsScreen(
                 Column(Modifier.padding(18.dp)) {
                     Text("服务能力", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Text("助手：${assistantModeLabel(cap.assistantMode)}")
-                    Text("语音：${speechProviderLabel(cap.speechProvider)} · ${if (cap.speechConfigured) "可用" else "未配置"}")
+                    Text("语音识别：${speechProviderLabel(cap.speechProvider)} · ${if (cap.speechConfigured) "可用" else "未配置"}")
+                    Text("语音播报：${if (cap.ttsServerSide) "电脑端合成（支持方言音色）" else "手机自带（只有普通话）"}")
                     Text("视频：${videoModeLabel(cap.videoMode)}")
                     cap.dialects.forEach { dialect -> Text("${dialect.label}：${if (dialect.available) "可用" else "不可用"} · ${dialect.note}", fontSize = 16.sp, color = Color(0xFF37485C), modifier = Modifier.padding(top = 4.dp)) }
                 }
@@ -1428,6 +2104,14 @@ private fun createNotificationChannel(context: Context) {
 }
 
 private fun postLocalNotification(context: Context, notification: NotificationItem) {
+    // Android 13（API 33）起发通知需要运行时拿到 POST_NOTIFICATIONS，
+    // 没拿到时 notify() 不会弹出任何东西。这里显式判一次：既让 lint 满意，
+    // 也把"通知没来"这件事从玄学变成可解释的行为（界面上已写明是"尝试发"）。
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+    ) {
+        return
+    }
     val builder = NotificationCompat.Builder(context, "laoyou-alerts")
         .setSmallIcon(android.R.drawable.ic_dialog_alert)
         .setContentTitle("老友异常通知 · ${notificationTargetLabel(notification.target)}")

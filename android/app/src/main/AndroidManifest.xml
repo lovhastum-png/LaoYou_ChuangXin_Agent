@@ -6,6 +6,31 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      声明这两项硬件"非必需"。CAMERA / RECORD_AUDIO 权限会让 Google Play
+      默认推断"设备必须有摄像头/麦克风"，从而把应用从没有摄像头的平板、
+      ChromeOS 设备上过滤掉。实际行为是：没有摄像头就看不到快照，
+      但事件、提醒、通话、助手都照常可用。
+    -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!--
+      Android 11（API 30）起包可见性收紧：不声明这一段，
+      SpeechRecognizer.isRecognitionAvailable() 与 startListening() 会看不到
+      系统里的语音识别服务，表现为"本机没有可用的语音识别服务"却装得好好的。
+      助手输入框的麦克风按钮依赖它。
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@android:drawable/sym_def_app_icon"

@@ -170,14 +170,32 @@ data class CallModel(
 )
 
 data class CapabilityDialect(val id: String, val label: String, val available: Boolean, val note: String)
+data class CapabilityVoice(val id: String, val available: Boolean)
 data class Capabilities(
     val assistantMode: String,
     val speechProvider: String,
     val speechConfigured: Boolean,
+    val speechNormalizesDialect: Boolean = false,
     val dialects: List<CapabilityDialect>,
     val videoMode: String,
-    val integrations: Map<String, String>
+    val integrations: Map<String, String>,
+    // 播报侧能力。手机自带的 TextToSpeech 只有普通话音色，所以方言播报
+    // 必须走服务端 edge-tts；这里读出来才能让界面说清"现在用的是哪一套"。
+    val ttsProvider: String = "",
+    val ttsServerSide: Boolean = false,
+    val ttsVoices: List<CapabilityVoice> = emptyList(),
+    val ttsNote: String = ""
 )
+
+/** 服务端合成好的语音，附带实际使用的音色（X-Voice 响应头）。 */
+data class SpeechAudio(val bytes: ByteArray, val voice: String?, val dialect: String?) {
+    // ByteArray 的 equals/hashCode 是引用比较，data class 自动生成的实现会误导人，
+    // 所以显式按内容比较，避免以后放进集合或做 equality 断言时踩坑。
+    override fun equals(other: Any?): Boolean =
+        this === other || (other is SpeechAudio && bytes.contentEquals(other.bytes) && voice == other.voice && dialect == other.dialect)
+
+    override fun hashCode(): Int = (bytes.contentHashCode() * 31 + (voice?.hashCode() ?: 0)) * 31 + (dialect?.hashCode() ?: 0)
+}
 
 data class AssistantResult(
     val reply: String,
@@ -362,11 +380,19 @@ class ApiClient(baseUrl: String, var token: String? = null) {
         }
     }
 
-    private fun requestRaw(method: String, path: String, body: ByteArray? = null, contentType: String = "application/json"): Pair<Int, ByteArray> {
+    private fun requestRaw(
+        method: String,
+        path: String,
+        body: ByteArray? = null,
+        contentType: String = "application/json",
+        readTimeoutMillis: Int = 15_000,
+        headerSink: MutableMap<String, String>? = null
+    ): Pair<Int, ByteArray> {
         val connection = (url(path).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 10_000
-            readTimeout = 15_000
+            // 默认 15 秒够普通接口用；语音合成/识别单独放宽，见调用处。
+            readTimeout = readTimeoutMillis
             useCaches = false
             setRequestProperty("Accept", "application/json")
             token?.takeIf { it.isNotBlank() }?.let { setRequestProperty("Authorization", "Bearer $it") }
@@ -379,6 +405,13 @@ class ApiClient(baseUrl: String, var token: String? = null) {
         try {
             if (body != null) connection.outputStream.use { it.write(body) }
             val status = connection.responseCode
+            // 播报要用 X-Voice 说明"实际是哪个音色"（四川话会回落普通话），
+            // 所以允许调用方取响应头；键统一小写，避免大小写差异。
+            headerSink?.let { sink ->
+                connection.headerFields.forEach { (name, values) ->
+                    if (name != null) sink[name.lowercase()] = values?.firstOrNull().orEmpty()
+                }
+            }
             val bytes = read(connection)
             if (status !in 200..299) {
                 val detail = runCatching { JSONObject(String(bytes, Charsets.UTF_8)).optString("detail") }.getOrNull()
@@ -540,11 +573,19 @@ class ApiClient(baseUrl: String, var token: String? = null) {
     fun getCapabilities(): Capabilities {
         val json = requestJson("GET", "/capabilities")
         val speech = json.objOrNull("speech")
+        val tts = json.objOrNull("tts")
         val dialects = buildList {
             val array = speech?.optJSONArray("dialects") ?: JSONArray()
             for (i in 0 until array.length()) {
                 val d = array.getJSONObject(i)
                 add(CapabilityDialect(d.optString("id"), d.optString("label"), d.optBoolean("available"), d.optString("note")))
+            }
+        }
+        val voices = buildList {
+            val array = tts?.optJSONArray("dialect_voices") ?: JSONArray()
+            for (i in 0 until array.length()) {
+                val v = array.getJSONObject(i)
+                add(CapabilityVoice(v.optString("id"), v.optBoolean("available")))
             }
         }
         val integrations = buildMap {
@@ -555,15 +596,20 @@ class ApiClient(baseUrl: String, var token: String? = null) {
             assistantMode = json.optString("assistant_mode"),
             speechProvider = speech?.optString("provider").orEmpty(),
             speechConfigured = speech?.optBoolean("configured", false) ?: false,
+            speechNormalizesDialect = speech?.optBoolean("normalizes_dialect", false) ?: false,
             dialects = dialects,
             videoMode = json.objOrNull("video")?.optString("mode").orEmpty(),
-            integrations = integrations
+            integrations = integrations,
+            ttsProvider = tts?.optString("provider").orEmpty(),
+            ttsServerSide = tts?.optBoolean("server_side", false) ?: false,
+            ttsVoices = voices,
+            ttsNote = tts?.optString("note").orEmpty()
         )
     }
 
     fun assistant(elderId: String, text: String, dialect: String? = null, confirmToken: String? = null): AssistantResult {
         val body = JSONObject().put("text", text)
-        dialect?.let { body.put("dialect", it) }
+        dialect?.let { body.put("dialect", dialect) }
         confirmToken?.let { body.put("confirm_token", it) }
         val json = requestJson("POST", "/elders/$elderId/assistant", body)
         return AssistantResult(
@@ -574,6 +620,51 @@ class ApiClient(baseUrl: String, var token: String? = null) {
             confirmToken = json.stringOrNull("confirm_token")
         )
     }
+
+    /**
+     * 上传 16k/16bit/单声道原始 PCM 做识别；方言会被后端归一化成普通话书面语，
+     * 因此识别结果可以直接进原本地规则助手，不需要维护方言词表。
+     *
+     * 超时给到 40 秒：后端等上游的上限是 30 秒（qwen_asr 默认 timeout），
+     * 客户端必须大于它，否则会先于后端断开，用户看到的是"网络错误"
+     * 而不是后端那条可读的 502 提示。
+     */
+    fun transcribeSpeech(elderId: String, dialect: String, pcm: ByteArray): String {
+        val (_, bytes) = requestRaw(
+            "POST",
+            "/elders/$elderId/speech?dialect=${enc(dialect)}",
+            pcm,
+            contentType = "audio/L16",
+            readTimeoutMillis = 40_000
+        )
+        return JSONObject(String(bytes, Charsets.UTF_8)).optString("text")
+    }
+
+    /**
+     * 服务端方言语音合成（edge-tts），返回 MP3 字节与实际音色。
+     *
+     * 超时 30 秒：首次合成长句实测要 5-8 秒，edge-tts 首次建连更久，
+     * 用默认的 15 秒会误判成失败并降级到手机 TTS（只有普通话）。
+     */
+    fun synthesizeSpeech(elderId: String, text: String, dialect: String): SpeechAudio {
+        val headers = mutableMapOf<String, String>()
+        val body = JSONObject().put("text", text).put("dialect", dialect).toString().toByteArray(Charsets.UTF_8)
+        val (_, bytes) = requestRaw(
+            "POST",
+            "/elders/$elderId/speech/synthesize",
+            body,
+            readTimeoutMillis = 30_000,
+            headerSink = headers
+        )
+        if (bytes.isEmpty()) throw ApiException(0, "服务端没有返回语音数据")
+        return SpeechAudio(bytes, headers["x-voice"], headers["x-dialect"])
+    }
+
+    /**
+     * 回传播报已播。后端只允许 elder/admin（契约第 3 节"回传方只有老人端"），
+     * 子女/社区账号调用会得到 403 —— 调用方要先按角色判断，不要在这里吞掉。
+     */
+    fun markBroadcastPlayed(id: String): Broadcast = parseBroadcast(requestJson("POST", "/broadcasts/$id/played"))
 
     fun getCalls(elderId: String): List<CallModel> = buildList {
         val array = requestJsonArray("GET", "/elders/$elderId/calls")

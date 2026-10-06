@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  API 27 起才有 windowLightNavigationBar（浅色导航栏图标）。minSdk 是 26，
+  所以这一条必须单独放在 values-v27 里：写在 values/ 下会让 API 26 设备
+  使用一个它不认识的属性（lint 报 NewApi，运行期行为也不确定）。
+-->
+<resources>
+    <style name="Theme.Laoyou" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

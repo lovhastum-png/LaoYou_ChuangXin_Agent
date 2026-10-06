@@ -6,6 +6,9 @@
         <item name="android:navigationBarColor">#F7F9FC</item>
         <item name="android:statusBarColor">#F7F9FC</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
+        <!--
+          android:windowLightNavigationBar 需要 API 27，minSdk 是 26，
+          所以它放在 values-v27/styles.xml，不在这里。
+        -->
     </style>
 </resources>
