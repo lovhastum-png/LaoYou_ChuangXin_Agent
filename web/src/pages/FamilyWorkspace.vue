@@ -167,16 +167,22 @@ async function injectObservation() {
   injectError.value = ''
   injectNotice.value = ''
   try {
-    const body: Record<string, unknown> = { kind: injection.value.kind, source: 'simulated', idempotency_key: crypto.randomUUID() }
-    if (injectionFields.value === 'blood-pressure') body.value = { systolic: Number(injection.value.systolic), diastolic: Number(injection.value.diastolic) }
-    else if (injection.value.value.trim()) body.value = Number(injection.value.value)
-    if (injection.value.duration_minutes.trim()) body.duration_minutes = Number(injection.value.duration_minutes)
-    if (injection.value.kind === 'immobility') body.sleeping = injection.value.sleeping
-    if (injection.value.occurred_at.trim()) {
-      const occurredAt = new Date(injection.value.occurred_at)
+    // Vue 对 <input type="number"> 的 v-model 会直接给出 number（runtime-dom 里
+    // type 为 number 时走 looseToNumber）。这些字段必须先转成字符串再 trim，
+    // 否则用户一在"数值/持续分钟/经纬度"里打字，这里就抛 TypeError，
+    // 请求根本发不出去，页面只会显示"观测注入失败"。
+    const text = (value: unknown) => (value === null || value === undefined ? '' : String(value))
+    const input = injection.value
+    const body: Record<string, unknown> = { kind: input.kind, source: 'simulated', idempotency_key: crypto.randomUUID() }
+    if (injectionFields.value === 'blood-pressure') body.value = { systolic: Number(input.systolic), diastolic: Number(input.diastolic) }
+    else if (text(input.value).trim()) body.value = Number(input.value)
+    if (text(input.duration_minutes).trim()) body.duration_minutes = Number(input.duration_minutes)
+    if (input.kind === 'immobility') body.sleeping = input.sleeping
+    if (text(input.occurred_at).trim()) {
+      const occurredAt = new Date(input.occurred_at)
       if (!Number.isNaN(occurredAt.getTime())) body.occurred_at = occurredAt.toISOString()
     }
-    if (injection.value.label.trim() && injection.value.latitude.trim() && injection.value.longitude.trim()) body.location = { latitude: Number(injection.value.latitude), longitude: Number(injection.value.longitude), label: injection.value.label.trim() }
+    if (text(input.label).trim() && text(input.latitude).trim() && text(input.longitude).trim()) body.location = { latitude: Number(input.latitude), longitude: Number(input.longitude), label: text(input.label).trim() }
     const result = await api.createObservation(selectedElderId.value, body)
     injectNotice.value = `已写入 ${result.observation.kind} 观测，产生 ${result.events.length} 个事件。`
     await loadEvents()
