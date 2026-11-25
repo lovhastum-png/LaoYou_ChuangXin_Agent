@@ -269,7 +269,9 @@ def _event_recordings(event: Event) -> list[dict[str, str]]:
             {
                 "label": "跌倒识别实录（吊装机位 · 52° 标定）",
                 "detail": "本项目姿态模型实测：逐帧骨架叠加，顶部显示躯干角与阈值刻度，"
-                          "紫色区段为慢放区间；横卧确认满 5 帧后弹出告警。",
+                          "紫色区段为慢放区间；横卧确认满 5 帧后弹出告警。"
+                          "画面 HUD 的「新阈值 50°」是渲染脚本笔误（已修正），"
+                          "该次运行实际生效的 torso_angle_threshold 为 52°。",
                 "src": "/media/fall-calibrated.mp4",
                 "poster": "",
             },

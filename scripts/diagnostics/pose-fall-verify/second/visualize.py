@@ -2,7 +2,7 @@
 
 产物：
   1. detect-annotated.mp4 —— 逐帧骨架 + 状态面板，3.57s 弹出告警红幅
-  2. feature-curves.png  —— 躯干角（同时标 62° 旧阈值与 50° 新阈值）
+  2. feature-curves.png  —— 躯干角（同时标 62° 旧阈值与 52° 新阈值）
                              与躯干竖直跨度 vr（展示躺下时的塌缩）
 """
 
@@ -98,11 +98,11 @@ def render_video(by_idx: dict, rows: list[dict]) -> None:
                 font=font_s, fill=(180, 200, 220))
         dr.text((26, 46), f"状态  {'—' if isnone else row['state']}",
                 font=font, fill=(255, 255, 255))
-        # 躯干角：旧阈值 62 与新阈值 50 双参考
+        # 躯干角：旧阈值 62 与新阈值 52 双参考
         col = (120, 255, 160) if angle_v >= NEW_ANGLE else (
             (255, 210, 120) if angle_v >= OLD_ANGLE else (190, 205, 225))
         dr.text((26, 78), f"躯干角 {angle_v:5.1f}°", font=font, fill=col)
-        dr.text((210, 82), f"旧阈值 62° / 新阈值 50°", font=font_s,
+        dr.text((210, 82), f"旧阈值 {OLD_ANGLE:.0f}° / 新阈值 {NEW_ANGLE:.0f}°", font=font_s,
                 fill=(160, 175, 195))
         dr.text((26, 112), f"躯干竖直跨度 vr {vr_v:.3f}"
                            f"（直立≈0.22，躺下≈0.08）", font=font_s,
