@@ -109,7 +109,17 @@ if (![string]::IsNullOrWhiteSpace($InstallerPython)) {
 if ([string]::IsNullOrWhiteSpace($installerPython) -or !(Test-Path -LiteralPath $installerPython)) {
     throw '找不到 Python 构建工具；请先创建 backend/.venv，或用 -InstallerPython 指定 Python 3.11 x64。'
 }
-$probe = & $installerPython -X utf8 -c 'import json, struct, sys; print(json.dumps({"major": sys.version_info.major, "minor": sys.version_info.minor, "bits": struct.calcsize("P") * 8}))'
+# PowerShell 5.1 会把内联 -c 参数里的双引号吞掉：{"major": ...} 到 Python 手里
+# 变成 {major: ...}，直接 NameError。因此把探测代码落到临时文件再执行，
+# 不依赖命令行的引号转义（同样的调用在 PowerShell 7 下才正常）。
+$probeScript = Join-Path $buildRoot '_probe_python_version.py'
+$probeSource = @'
+import json, struct, sys
+
+print(json.dumps({"major": sys.version_info.major, "minor": sys.version_info.minor, "bits": struct.calcsize("P") * 8}))
+'@
+[IO.File]::WriteAllText($probeScript, $probeSource, [Text.UTF8Encoding]::new($false))
+$probe = & $installerPython -X utf8 $probeScript
 if ($LASTEXITCODE -ne 0) { throw '无法检查 Python 构建工具版本。' }
 try { $pythonMeta = ($probe | Select-Object -Last 1 | ConvertFrom-Json) } catch { throw 'Python 构建工具版本输出无法解析。' }
 if ($pythonMeta.major -ne 3 -or $pythonMeta.minor -ne 11 -or $pythonMeta.bits -ne 64) {
@@ -132,8 +142,10 @@ try {
 
 # 只复制 backend/app，不复制 backend/.venv、测试和源码工作区数据。
 Copy-DirChecked (Join-Path $root 'backend/app') (Join-Path $stage 'backend/app')
+# 逐个目录显式删除，不走管道：某些环境把 Remove-Item 包装成带守卫的函数，
+# 管道绑定会直接报 ParameterBindingException。字节码在包里没有用处。
 Get-ChildItem -LiteralPath (Join-Path $stage 'backend') -Directory -Filter '__pycache__' -Recurse -ErrorAction SilentlyContinue |
-    Remove-Item -Recurse -Force
+    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
 Copy-DirChecked (Join-Path $root 'web/dist') (Join-Path $stage 'web/dist')
 Copy-FileChecked (Join-Path $root 'packaging/runner.py') (Join-Path $stage 'support/runner.py')
 foreach ($entry in @('启动老友.cmd','停止老友.cmd','查看状态.cmd','手机连接说明.cmd','诊断老友.cmd')) {
