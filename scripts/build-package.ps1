@@ -1,7 +1,8 @@
 ﻿param(
     [string]$OutputDir = '',
     [switch]$RebuildWeb,
-    [string]$VCRedistDir = ''
+    [string]$VCRedistDir = '',
+    [string]$InstallerPython = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -95,12 +96,18 @@ $pth = Join-Path $pythonDest 'python311._pth'
 if (!(Test-Path -LiteralPath $pth)) { throw 'Python embeddable runtime 缺少 python311._pth。' }
 [IO.File]::WriteAllText($pth, "python311.zip`r`n.`r`nLib\site-packages`r`n`r`nimport site`r`n", [Text.UTF8Encoding]::new($false))
 
-$installerPython = Join-Path $root 'backend/.venv/Scripts/python.exe'
-if (!(Test-Path -LiteralPath $installerPython)) {
-    $installerPython = (Get-Command python -ErrorAction SilentlyContinue).Source
+if (![string]::IsNullOrWhiteSpace($InstallerPython)) {
+    # 显式指定的构建解释器优先：本机 backend/.venv 可能是别的次版本（如 3.13），
+    # 而 --target 装入的 wheel 必须与包内 runtime 的 3.11 同 ABI。
+    $installerPython = [IO.Path]::GetFullPath($InstallerPython)
+} else {
+    $installerPython = Join-Path $root 'backend/.venv/Scripts/python.exe'
+    if (!(Test-Path -LiteralPath $installerPython)) {
+        $installerPython = (Get-Command python -ErrorAction SilentlyContinue).Source
+    }
 }
 if ([string]::IsNullOrWhiteSpace($installerPython) -or !(Test-Path -LiteralPath $installerPython)) {
-    throw '找不到 Python 构建工具；请先创建 backend/.venv，或安装 Python 3.11。'
+    throw '找不到 Python 构建工具；请先创建 backend/.venv，或用 -InstallerPython 指定 Python 3.11 x64。'
 }
 $probe = & $installerPython -X utf8 -c 'import json, struct, sys; print(json.dumps({"major": sys.version_info.major, "minor": sys.version_info.minor, "bits": struct.calcsize("P") * 8}))'
 if ($LASTEXITCODE -ne 0) { throw '无法检查 Python 构建工具版本。' }
