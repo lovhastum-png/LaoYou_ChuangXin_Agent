@@ -8,6 +8,7 @@ import { useCameraSession } from './lib/useCameraSession'
 import CallPage from './pages/CallPage.vue'
 import CallsPage from './pages/CallsPage.vue'
 import ElderHome from './pages/ElderHome.vue'
+import EventDetailPage from './pages/EventDetailPage.vue'
 import FamilyWorkspace from './pages/FamilyWorkspace.vue'
 import HealthPage from './pages/HealthPage.vue'
 import LoginPage from './pages/LoginPage.vue'
@@ -25,11 +26,13 @@ let resumeCameraId: string | null = null
 const route = computed(() => {
   const match = routePath.value.match(/^\/call\/([^/]+)/)
   if (match) return { kind: 'call' as const, callId: decodeURIComponent(match[1]), token: routeQuery.value.get('token') || undefined, initiator: routeQuery.value.get('offer') === '1', embedded: routeQuery.value.get('embedded') === '1' }
+  const eventMatch = routePath.value.match(/^\/event\/([^/]+)/)
+  if (eventMatch) return { kind: 'event' as const, eventId: decodeURIComponent(eventMatch[1]) }
   const path = routePath.value.replace(/^\/+|\/+$/g, '')
   return { kind: (path || 'home') as NavRoute }
 })
 
-const activeRoute = computed<NavRoute>(() => route.value.kind === 'call' ? 'calls' : route.value.kind)
+const activeRoute = computed<NavRoute>(() => route.value.kind === 'call' ? 'calls' : route.value.kind === 'event' ? 'family' : route.value.kind)
 const needsCallOnlyAuth = computed(() => route.value.kind === 'call' && Boolean(route.value.token))
 
 function updateRoute() {
@@ -63,6 +66,17 @@ function openCall(call: Pick<Call, 'id'>) {
   // 本地会话。地址栏里的 token 会进入浏览器历史、Referer 与反向代理日志。
   // （Android 内嵌 WebView 走 embedded=1 的独立链路，不经过这里。）
   window.history.pushState({}, '', `/call/${encodeURIComponent(call.id)}`)
+  updateRoute()
+}
+
+/** 事件详情是独立整页：地址栏可前进后退、可刷新、可直达链接。 */
+function openEvent(eventId: string) {
+  window.history.pushState({}, '', `/event/${encodeURIComponent(eventId)}`)
+  updateRoute()
+}
+
+function backToEvents() {
+  window.history.pushState({}, '', '/family')
   updateRoute()
 }
 
@@ -127,6 +141,7 @@ onBeforeUnmount(() => {
     <CallsPage v-else-if="activeRoute === 'calls'" :user="user" @open-call="openCall" />
     <HealthPage v-else-if="activeRoute === 'health'" :user="user" />
     <SafetyPage v-else-if="activeRoute === 'safety'" :user="user" />
-    <FamilyWorkspace v-else :user="user" />
+    <EventDetailPage v-else-if="route.kind === 'event'" :key="route.eventId" :user="user" :event-id="route.eventId" @back="backToEvents" @navigate="navigate" />
+    <FamilyWorkspace v-else :user="user" @open-event="openEvent" />
   </AppShell>
 </template>

@@ -176,8 +176,115 @@ def event_dict(db: Session, event: Event, elder_name: str | None = None) -> dict
     }
 
 
+def _event_observation(db: Session, event: Event) -> Observation | None:
+    """由事件的去重键反查触发它的原始观测。
+
+    dedupe_key 形如 observation:{observation_id}:{kind}，是事件与观测之间唯一
+    的关联线索（Event 表没有直接外键）。解析失败或观测已被清理时返回 None，
+    详情页随后退化为只展示事件自身的描述。
+    """
+    parts = (event.dedupe_key or "").split(":")
+    if len(parts) < 3 or parts[0] != "observation":
+        return None
+    return db.get(Observation, parts[1])
+
+
+def _trigger_clause(event: Event, observation: Observation | None, rules: dict[str, Any]) -> str:
+    """把"到底触发了什么"翻译成一句可读的判据。
+
+    规则引擎写事件时只把结论写进 description，触发阈值散落在 rules 里。
+    这里按事件类型把阈值重新配到描述后面，让详情页能一句话说清
+    "是什么观测、什么数值、越过了哪条线"。数值缺失时只回落到阈值本身。
+    """
+    kind = event.kind
+    value = observation.value if observation is not None else None
+    duration = observation.duration_minutes if observation is not None else None
+    sleeping = bool(observation.sleeping) if observation is not None else False
+
+    def _num(raw: Any) -> float | None:
+        if isinstance(raw, bool) or raw is None:
+            return None
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+
+    def _fmt(number: float) -> str:
+        return f"{number:g}"
+
+    if kind == "fall":
+        return "姿态模型判定为跌倒动作，直接触发紧急事件（无需阈值）。"
+    if kind == "immobility":
+        threshold = _num(
+            rules.get("sleep_immobility_minutes") if sleeping else rules.get("immobility_minutes")
+        )
+        scope = "睡眠时段" if sleeping else "清醒时段"
+        if duration is not None and threshold is not None:
+            return f"静止持续 {duration} 分钟 ≥ {scope}阈值 {_fmt(threshold)} 分钟。"
+        if threshold is not None:
+            return f"静止时长越过{scope}阈值 {_fmt(threshold)} 分钟。"
+        return f"静止时长越过{scope}演示阈值。"
+    if kind == "away":
+        threshold = _num(rules.get("away_minutes"))
+        if duration is not None and threshold is not None:
+            return f"未归持续 {duration} 分钟 ≥ 阈值 {_fmt(threshold)} 分钟。"
+        return "离家时长越过演示阈值。"
+    if kind == "wandering":
+        start = rules.get("night_start", "22:00")
+        end = rules.get("night_end", "06:00")
+        return f"在夜间时段（{start}–{end}）收到徘徊观测。"
+    if kind == "heart_rate":
+        low = _num(rules.get("heart_rate_low"))
+        high = _num(rules.get("heart_rate_high"))
+        number = _num(value)
+        if number is not None and low is not None and high is not None:
+            direction = "低于下限" if number < low else "高于上限"
+            return f"观测心率 {_fmt(number)}，{direction}，越过演示范围 {_fmt(low)}–{_fmt(high)}。"
+        return "观测心率越过演示范围。"
+    if kind == "blood_pressure":
+        systolic_high = _num(rules.get("systolic_high"))
+        diastolic_high = _num(rules.get("diastolic_high"))
+        if isinstance(value, dict):
+            systolic = _num(value.get("systolic"))
+            diastolic = _num(value.get("diastolic"))
+            if systolic is not None and diastolic is not None and systolic_high is not None and diastolic_high is not None:
+                return (
+                    f"观测血压 {_fmt(systolic)}/{_fmt(diastolic)}，"
+                    f"达到演示提醒阈值（高压 ≥ {_fmt(systolic_high)} 或 低压 ≥ {_fmt(diastolic_high)}）。"
+                )
+        return "观测血压达到演示提醒阈值。"
+    return "命中演示规则，事件已创建。"
+
+
+def _event_recordings(event: Event) -> list[dict[str, str]]:
+    """事件关联的现场录屏。
+
+    素材是本项目自己的跌倒检测实测录屏（吊装机位、按 52° 标定重跑的那一版）：
+    画面里同时能看到姿态骨架、顶部标定条（躯干角与阈值刻度）以及告警触发，
+    是「到底触发了什么」最直接的证据。其他事件类型没有画面，返回空列表，
+    详情页自然不会显示播放器。
+    """
+    if event.kind == "fall":
+        return [
+            {
+                "label": "跌倒识别实录（吊装机位 · 52° 标定）",
+                "detail": "本项目姿态模型实测：逐帧骨架叠加，顶部显示躯干角与阈值刻度，"
+                          "紫色区段为慢放区间；横卧确认满 5 帧后弹出告警。",
+                "src": "/media/fall-calibrated.mp4",
+                "poster": "",
+            },
+        ]
+    return []
+
+
 def event_detail_dict(db: Session, event: Event) -> dict[str, Any]:
     payload = event_dict(db, event)
+    observation = _event_observation(db, event)
+    elder = db.get(Elder, event.elder_id)
+    rules = (elder.rules if elder and elder.rules else {}) or {}
+    payload["observation"] = observation_dict(observation) if observation is not None else None
+    payload["trigger_clause"] = _trigger_clause(event, observation, rules)
+    payload["recordings"] = _event_recordings(event)
     payload["timeline"] = [
         timeline_dict(item)
         for item in db.query(Timeline)

@@ -155,7 +155,20 @@ export interface Escort {
   simulated: boolean
 }
 
+export interface EventRecording {
+  label: string
+  detail: string
+  src: string
+  poster: string
+}
+
 export interface EventDetail extends EventItem {
+  /** 触发这条事件的原始观测；历史事件可能已被清理，故允许为 null。 */
+  observation: Observation | null
+  /** 把"到底触发了什么"写成一句话的判据说明。 */
+  trigger_clause: string
+  /** 事件关联的现场录屏（当前仅跌倒事件有）。 */
+  recordings: EventRecording[]
   timeline: Timeline[]
   notifications: Notification[]
   escort: Escort | null

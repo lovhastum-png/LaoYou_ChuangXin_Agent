@@ -1588,5 +1588,11 @@ if web_dist.is_dir():
         del call_id
         return spa_entry()
 
+    @app.get("/event/{event_id}", include_in_schema=False)
+    def event_entry(event_id: str) -> FileResponse:
+        # 事件详情是独立整页（不是列表页的右栏），刷新/直链都要能落到 SPA。
+        del event_id
+        return spa_entry()
+
     # Mounted last so every /api and /ws route above keeps precedence.
     app.mount("/", StaticFiles(directory=str(web_dist), html=True), name="web")

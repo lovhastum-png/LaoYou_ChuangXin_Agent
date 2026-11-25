@@ -1741,3 +1741,96 @@ input:focus, select:focus, textarea:focus { border-color: var(--brand); outline:
   .call-controls { min-height: 74px; gap: var(--sp-9); }
   .call-privacy { padding-bottom: var(--sp-11); font-size: 1rem; }
 }
+
+/* ── 事件详情（独立整页 /event/:id）─────────────────────────────
+   事件列表点击后跳转到这一页，而不是在列表右侧展开。
+   页面自上而下：返回条 → 事件头部 → 触发依据 → 现场录屏 → 处置双栏。 */
+.event-page { display: flex; flex-direction: column; gap: var(--sp-18); }
+
+.event-page-bar { display: flex; align-items: center; gap: var(--sp-16); }
+
+.back-button { display: inline-flex; align-items: center; gap: var(--sp-7); padding: var(--sp-9) var(--sp-15); color: var(--brand-deep); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); font-size: 1rem; font-weight: 700; }
+
+.back-button:hover { background: var(--surface-hover); }
+
+.event-bar-meta { overflow: hidden; color: var(--muted); font-size: 1rem; text-overflow: ellipsis; white-space: nowrap; }
+
+.event-hero { display: grid; grid-template-columns: 62px minmax(0, 1fr) auto; gap: var(--sp-19); align-items: flex-start; padding: var(--sp-25) var(--sp-27); border-left: 5px solid var(--line-strong); }
+
+.event-hero.hero-critical { border-left-color: var(--red); }
+
+.event-hero.hero-warning { border-left-color: var(--orange); }
+
+.hero-icon { display: flex; align-items: center; justify-content: center; width: 62px; height: 62px; border-radius: var(--radius-md); background: var(--surface-alert); }
+
+.hero-critical .hero-icon { color: var(--red); }
+
+.hero-warning .hero-icon { color: var(--orange); }
+
+.hero-body { min-width: 0; }
+
+.hero-tags { display: flex; align-items: center; gap: var(--sp-9); color: var(--muted); font-size: 1rem; }
+
+.hero-body h1 { margin-top: var(--sp-10); color: var(--brand-deep); font-size: 2rem; }
+
+.hero-desc { margin-top: var(--sp-9); color: var(--muted-strong); font-size: 1.0625rem; line-height: 1.65; }
+
+.hero-status { display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-6); }
+
+.hero-status small { color: var(--muted); font-size: 0.9375rem; }
+
+.trigger-card, .recording-card, .action-card, .location-card { padding: var(--sp-25) var(--sp-27); }
+
+.trigger-card .table-heading, .recording-card .table-heading, .action-card .table-heading, .location-card .table-heading { margin-bottom: var(--sp-18); }
+
+.trigger-clause { padding: var(--sp-15) var(--sp-17); color: var(--brand-deep); background: var(--surface-alert); border-left: 3px solid var(--brand); border-radius: var(--radius-sm); font-size: 1.0625rem; font-weight: 600; line-height: 1.6; }
+
+.trigger-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--sp-13); margin-top: var(--sp-18); }
+
+.pose-metrics { margin-top: var(--sp-16); }
+
+.pose-metrics-title { color: var(--muted); font-size: 0.9375rem; font-weight: 700; letter-spacing: 0.02em; }
+
+.pose-metrics .trigger-grid { margin-top: var(--sp-11); }
+
+.pose-metrics .trigger-cell { background: var(--surface-alert); }
+
+.trigger-cell { padding: var(--sp-12) var(--sp-14); background: var(--surface-soft); border-radius: var(--radius-sm); }
+
+.trigger-cell dt { color: var(--muted); font-size: 0.9375rem; }
+
+.trigger-cell dd { margin-top: var(--sp-5); color: var(--ink); font-size: 1.0625rem; font-weight: 700; }
+
+.recording-player { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-15); align-items: start; }
+
+.recording-video { display: block; max-width: 100%; max-height: 640px; margin: 0 auto; background: #0b1a18; border-radius: var(--radius-sm); }
+
+.recording-caption { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-18); margin-top: var(--sp-15); }
+
+.recording-caption > div { min-width: 0; }
+
+.recording-caption strong { display: block; color: var(--brand-deep); font-size: 1.125rem; }
+
+.recording-caption p { margin-top: var(--sp-6); color: var(--muted-strong); font-size: 1rem; line-height: 1.65; }
+
+.recording-caption .secondary-button { flex: 0 0 auto; align-self: center; margin-top: 0; }
+
+.recording-tabs { display: flex; flex-wrap: wrap; gap: var(--sp-9); margin-top: var(--sp-17); }
+
+.recording-tab { padding: var(--sp-9) var(--sp-15); color: var(--muted-strong); background: var(--surface-soft); border: 1px solid transparent; border-radius: var(--radius-sm); font-size: 1rem; font-weight: 700; }
+
+.recording-tab:hover { color: var(--brand-deep); }
+
+.recording-tab.active { color: var(--brand-deep); background: var(--surface-alert); border-color: var(--brand); }
+
+.event-detail-columns { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.85fr); gap: var(--sp-18); align-items: start; }
+
+.event-detail-main, .event-detail-side { display: flex; flex-direction: column; gap: var(--sp-16); min-width: 0; }
+
+.event-list-hint { padding: var(--sp-15) var(--sp-21); color: var(--muted); font-size: 1rem; border-top: 1px solid var(--line); }
+
+@media (max-width: 1080px) {
+  .event-detail-columns, .recording-player { grid-template-columns: 1fr; }
+  .event-hero { grid-template-columns: 52px minmax(0, 1fr); }
+  .hero-status { grid-column: 2; flex-direction: row; align-items: center; }
+}
