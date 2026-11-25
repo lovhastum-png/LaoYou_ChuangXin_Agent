@@ -41,7 +41,7 @@ FastAPI 后端（HTTP + WebSocket）、Kotlin + Jetpack Compose 的安卓子女�
 
 ## 直接下载使用
 
-无需下载源码，也无需安装开发IDE。
+无需下载源码，也无需安装开发IDE。当前最新包为 2026-11-25 版本（含事件详情页与跌倒实录回放）。
 
 | 你要使用什么 | 下载 | 需要什么 |
 |---|---|---|
@@ -128,8 +128,9 @@ backend/pose/.venv/Scripts/python.exe -X utf8 -m backend.pose.test_detector   # 
 
 普通用户下载上方Release中的包体；GitHub自动提供的“Source code”是源码，需要自行准备开发环境。
 
-> Release 中的 Windows／Android 二进制包为 2026-09-09 验收版。跌倒识别引擎与事件
-> 详情页在源码中持续更新，二进制包未随之重建；要体验最新功能请用上面的源码启动方式。
+> 最新 Release（2026-11-25）的便携包已包含事件详情页与跌倒实录回放。跌倒识别引擎本身是
+> 源码侧车，需要 PyTorch（1–2 GB），不随运行包分发；复现方式与阈值标定见
+> [`backend/pose/README.md`](backend/pose/README.md)。
 
 - [开发者文档](doc/01-开发者文档.md)：架构、数据、权限、全部功能逻辑、修改入口、构建和测试。
 - [跨网络访问](doc/01-开发者文档.md#157-跨网络访问cloudflare-tunnel)：Cloudflare Tunnel 的两种模式、TURN 中继配置、对外暴露前的账号收紧要求。
